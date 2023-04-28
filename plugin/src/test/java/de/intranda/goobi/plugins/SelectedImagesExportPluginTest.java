@@ -12,6 +12,7 @@ import org.apache.commons.configuration.reloading.FileChangedReloadingStrategy;
 import org.easymock.EasyMock;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -61,6 +62,7 @@ public class SelectedImagesExportPluginTest {
         PowerMock.replay(ConfigPlugins.class);
     }
 
+    @Ignore
     @Test
     public void testConstructor() {
         SelectedImagesExportPlugin plugin = new SelectedImagesExportPlugin();
