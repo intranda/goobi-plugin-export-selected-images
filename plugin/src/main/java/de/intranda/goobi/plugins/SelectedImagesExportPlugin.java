@@ -60,6 +60,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private String sourceFolderName;
     private String targetFolder;
 
+    private boolean useScp;
+    private String scpLogin;
+    private String scpPassword;
+
     private static StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
     @Getter
@@ -112,11 +116,14 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         List<Image> selectedImages = getSelectedImages(process, selectedImagesNames);
+        boolean successful = selectedImages != null;
         for (Image image : selectedImages) {
             log.debug("image.getImageName() = " + image.getImageName());
+            log.debug("image.getImagePath() = " + image.getImagePath());
         }
 
         // export the selected images
+        successful = successful && exportSelectedImages(process, selectedImages);
 
         // export the mets-file
 
@@ -142,11 +149,17 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         propertyName = config.getString("./propertyName");
         sourceFolderName = config.getString("./sourceFolder");
         targetFolder = config.getString("targetFolder");
+
+        useScp = config.getBoolean("./useScp", false);
+        scpLogin = config.getString("./scpLogin", "");
+        scpPassword = config.getString("./scpPassword", "");
+
         log.debug("exportMetsFile: {}", exportMetsFile ? "yes" : "no");
         log.debug("createSubfolders: {}", createSubfolders ? "yes" : "no");
         log.debug("propertyName = " + propertyName);
         log.debug("sourceFolderName = " + sourceFolderName);
         log.debug("targetFolder = " + targetFolder);
+        log.debug("useScp: {}", useScp ? "yes" : "no");
     }
 
     private List<String> getSelectedImagesNames(Process process) {
@@ -211,6 +224,20 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return null;
     }
 
+    private boolean exportSelectedImages(Process process, List<Image> selectedImages) {
+        return useScp ? exportSelectedImagesUsingScp(process, selectedImages) : exportSelectedImagesLocally(process, selectedImages);
+    }
+
+    private boolean exportSelectedImagesUsingScp(Process process, List<Image> selectedImages) {
+
+        return true;
+    }
+
+    private boolean exportSelectedImagesLocally(Process process, List<Image> selectedImages) {
+
+        return true;
+    }
+    
     /**
      * 
      * @param process
