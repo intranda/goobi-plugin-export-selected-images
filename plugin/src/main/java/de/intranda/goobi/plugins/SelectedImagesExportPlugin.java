@@ -3,8 +3,10 @@ package de.intranda.goobi.plugins;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.configuration.SubnodeConfiguration;
@@ -35,9 +37,14 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.log4j.Log4j2;
 import net.xeoh.plugins.base.annotations.PluginImplementation;
+import ugh.dl.ContentFile;
+import ugh.dl.ContentFileReference;
 import ugh.dl.DigitalDocument;
+import ugh.dl.DocStruct;
+import ugh.dl.FileSet;
 import ugh.dl.Fileformat;
 import ugh.dl.Prefs;
+import ugh.dl.Reference;
 import ugh.exceptions.DocStructHasNoTypeException;
 import ugh.exceptions.MetadataTypeNotAllowedException;
 import ugh.exceptions.PreferencesException;
@@ -155,6 +162,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private List<Image> getSelectedImages(Process process) throws IOException, SwapException, DAOException {
         log.debug("getting selected images");
+        // check source folder
         String imageFolder = process.getConfiguredImageFolder(sourceFolderName);
         if (StringUtils.isBlank(imageFolder)) {
             String message = "The folder configured as '" + sourceFolderName + "' does not exist yet. Aborting.";
@@ -162,6 +170,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             return null;
         }
 
+        // get names of all selected images
         Set<String> imageNames = getSelectedImagesNames(process);
         if (imageNames.isEmpty()) {
             String message = "No image is selected, aborting.";
@@ -300,8 +309,120 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== // EXPORT LOCALLY // =============== //
 
     private boolean exportMetsFile(Process process, List<Image> selectedImages) {
+        Map<Image, Integer> selectedImagesMap = new HashMap<>();
+        for (int i = 0; i < selectedImages.size(); ++i) {
+            Image image = selectedImages.get(i);
+            selectedImagesMap.put(image, i);
+        }
 
-        return true;
+        log.debug("exporting Mets file");
+        try {
+            Prefs prefs = process.getRegelsatz().getPreferences();
+            Fileformat ff = process.readMetadataFile();
+            DigitalDocument dd = ff.getDigitalDocument();
+
+            //            initializeTypes(process);
+
+            DocStruct boundBook = dd.getPhysicalDocStruct();
+            List<DocStruct> children = boundBook.getAllChildren();
+            for (DocStruct child : children) {
+                //                String value = child.getAdditionalValue(); // null
+                //                String amdId = child.getAdmId(); // null
+                //                String type = child.getDocstructType(); // div
+                String id = child.getIdentifier(); // PHYS_0023
+                String imageName = child.getImageName(); // 00000023.jpg
+                //                String link = child.getLink(); // null
+                //                String orderLabel = child.getOrderLabel(); // null
+                //                int position = child.getPositionofChild(boundBook); // NullPointerException
+                //                String message = child.getValidationMessage(); // null
+
+                log.debug("--------------------");
+
+                //                List<Reference> toReferences = child.getAllToReferences();
+                //                log.debug("toReferences has size = " + toReferences.size()); // 0
+
+                List<Reference> fromReferences = child.getAllFromReferences();
+                log.debug("fromReferences has size = " + fromReferences.size()); // 2
+                for (Reference reference : fromReferences) {
+                    String refType = reference.getType();
+                    DocStruct source = reference.getSource();
+                    DocStruct target = reference.getTarget();
+
+                    String sourceId = source.getIdentifier(); // LOG_0000, LOG_0006
+                    String sourceImageName = source.getImageName(); // null, null
+
+                    String targetId = target.getIdentifier(); // PHYS_0023, PHYS_0023
+                    String targetImageName = target.getImageName(); // 00000023.jpg, 00000023.jpg
+
+                    log.debug("refType = " + refType); // logical_physical, logical_physical
+                    log.debug("sourceId = " + sourceId);
+                    log.debug("sourceImageName = " + sourceImageName);
+                    log.debug("targetId = " + targetId);
+                    log.debug("targetImageName = " + targetImageName);
+                }
+
+                List<ContentFileReference> contentFileReferences = child.getAllContentFileReferences();
+                log.debug("contentFileReferences has size = " + contentFileReferences.size()); // 1
+                for (ContentFileReference reference : contentFileReferences) {
+                    ContentFile cf = reference.getCf();
+                    String cfId = cf.getIdentifier(); // FILE_0023
+                    String cfUUID = cf.getUUID(imageName); // null
+                    log.debug("cfId = " + cfId);
+                }
+
+                log.debug("id = " + id);
+                log.debug("imageName = " + imageName);
+            }
+
+            //            DocStruct logical = dd.getLogicalDocStruct();
+            //            List<DocStruct> logicalChildren = logical.getAllChildren();
+            //            for (DocStruct child : logicalChildren) {
+            //                String value = child.getAdditionalValue(); // null
+            //                String amdId = child.getAdmId(); // null
+            //                String type = child.getDocstructType(); // div
+            //                String id = child.getIdentifier(); // LOG_0006
+            //                String imageName = child.getImageName(); // null
+            //                String link = child.getLink(); // null
+            //                String orderLabel = child.getOrderLabel(); // null
+            //                String message = child.getValidationMessage(); // null
+            //
+            //
+            //                log.debug("--------------------");
+            //                log.debug("value = " + value);
+            //                log.debug("amdId = " + amdId);
+            //                log.debug("type = " + type);
+            //                log.debug("id = " + id);
+            //                log.debug("imageName = " + imageName);
+            //                log.debug("link = " + link);
+            //                log.debug("orderLabel = " + orderLabel);
+            //                log.debug("message = " + message);
+            //            }
+            
+            FileSet fileSet = dd.getFileSet();
+            List<ContentFile> contentFiles = fileSet.getAllFiles();
+            for (ContentFile file : contentFiles) {
+                List<DocStruct> referenced = file.getReferencedDocStructs();
+                log.debug("referenced has size = " + referenced.size()); // 1
+                for (DocStruct ds : referenced) {
+                    String referencedImageName = ds.getImageName(); // 00000023.jpg
+                    String referencedId = ds.getIdentifier(); // PHYS_0023
+
+                    log.debug("referencedId = " + referencedId);
+                    log.debug("referencedImageName = " + referencedImageName);
+                }
+            }
+            
+
+
+            //            process.saveTemporaryMetsFile(ff);
+
+            return true;
+
+        } catch (ReadException | IOException | SwapException | PreferencesException e) {
+            String message = "Errors happened trying to export the Mets file.";
+            logBoth(process.getId(), LogType.ERROR, message);
+            return false;
+        }
     }
 
     /**
