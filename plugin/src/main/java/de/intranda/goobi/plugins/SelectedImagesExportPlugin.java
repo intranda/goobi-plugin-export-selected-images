@@ -13,11 +13,13 @@ import org.apache.commons.lang.StringUtils;
 import org.goobi.beans.Process;
 import org.goobi.beans.Processproperty;
 import org.goobi.beans.Step;
+import org.goobi.production.enums.LogType;
 import org.goobi.production.enums.PluginType;
 import org.goobi.production.plugin.interfaces.IExportPlugin;
 import org.goobi.production.plugin.interfaces.IPlugin;
 
 import de.sub.goobi.config.ConfigPlugins;
+import de.sub.goobi.helper.Helper;
 import de.sub.goobi.helper.StorageProvider;
 import de.sub.goobi.helper.StorageProviderInterface;
 import de.sub.goobi.helper.VariableReplacer;
@@ -221,56 +223,79 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     }
 
     private boolean exportSelectedImages(Process process, List<Image> selectedImages) {
-        return useScp ? exportSelectedImagesUsingScp(process, selectedImages) : exportSelectedImagesLocally(process, selectedImages);
+        int processId = process.getId();
+        return useScp ? exportSelectedImagesUsingScp(processId, selectedImages) : exportSelectedImagesLocally(processId, selectedImages);
     }
 
     // ================= EXPORT USING SCP ================= // 
-    private boolean exportSelectedImagesUsingScp(Process process, List<Image> selectedImages) {
+    private boolean exportSelectedImagesUsingScp(int processId, List<Image> selectedImages) {
         Path targetFolderPath = Path.of(targetFolder);
         // create subfolders if configured so
-        boolean success = !createSubfolders || createSubfoldersUsingScp(targetFolderPath);
+        boolean success = !createSubfolders || createSubfoldersUsingScp(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
         for (Image image : selectedImages) {
-            success = success && exportImageUsingScp(image, targetFolderPath);
+            success = success && exportImageUsingScp(processId, image, targetFolderPath);
         }
 
         return success;
     }
 
-    private boolean createSubfoldersUsingScp(Path folderPath) {
+    private boolean createSubfoldersUsingScp(int processId, Path folderPath) {
 
         return true;
     }
 
-    private boolean exportImageUsingScp(Image image, Path targetFolderPath) {
+    private boolean exportImageUsingScp(int processId, Image image, Path targetFolderPath) {
 
         return true;
     }
     // =============== // EXPORT USING SCP // =============== //
 
     // ================= EXPORT LOCALLY ================= // 
-    private boolean exportSelectedImagesLocally(Process process, List<Image> selectedImages) {
-        Path targetFolderPath = Path.of(targetFolder);
-        // create subfolders if configured so
-        boolean success = !createSubfolders || createSubfoldersLocally(targetFolderPath);
+    private boolean exportSelectedImagesLocally(int processId, List<Image> selectedImages) {
+        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
+        // create subfolders if configured so    
+        boolean success = !createSubfolders || createFoldersLocally(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
         for (Image image : selectedImages) {
-            success = success && exportImageLocally(image, targetFolderPath);
+            success = success && exportImageLocally(processId, image, targetFolderPath);
         }
 
         return success;
     }
     
-    private boolean createSubfoldersLocally(Path folderPath) {
-
-        return true;
+    private boolean createFoldersLocally(int processId, Path folderPath) {
+        try {
+            // no exception will be thrown if the directories are already there, hence no need to check
+            storageProvider.createDirectories(folderPath);
+            return true;
+        } catch (IOException e) {
+            String message = "IOException caught while trying to create the directories locally under " + folderPath.toString();
+            logBoth(processId, LogType.ERROR, message);
+            return false;
+        }
     }
 
-    private boolean exportImageLocally(Image image, Path targetFolderPath) {
+    private boolean exportImageLocally(int processId, Image image, Path targetFolderPath) {
+        String imageName = image.getImageName();
+        //        String imageSource = image.getUrl();
+        Path imageSourcePath = image.getImagePath();
+        Path imageTargetPath = targetFolderPath.resolve(imageName);
+        log.debug("imageName = " + imageName);
+        //        log.debug("imageSource = " + imageSource);
+        log.debug("imageSourcePath = " + imageSourcePath);
+        log.debug("imageTargetPath = " + imageTargetPath);
 
-        return true;
+        try {
+            storageProvider.copyFile(imageSourcePath, imageTargetPath);
+            return true;
+        } catch (IOException e) {
+            String message = "IOException caught while trying to copy the image named " + imageName + " locally";
+            logBoth(processId, LogType.ERROR, message);
+            return false;
+        }
     }
 
     // =============== // EXPORT LOCALLY // =============== //
@@ -303,5 +328,32 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         return conf;
+    }
+
+    /**
+     * 
+     * @param processId
+     * @param logType
+     * @param message message to be shown to both terminal and journal
+     */
+    private void logBoth(int processId, LogType logType, String message) {
+        String logMessage = "VLM Export Plugin: " + message;
+        switch (logType) {
+            case ERROR:
+                log.error(logMessage);
+                break;
+            case DEBUG:
+                log.debug(logMessage);
+                break;
+            case WARN:
+                log.warn(logMessage);
+                break;
+            default: // INFO
+                log.info(logMessage);
+                break;
+        }
+        if (processId > 0) {
+            Helper.addMessageToProcessJournal(processId, logType, logMessage);
+        }
     }
 }
