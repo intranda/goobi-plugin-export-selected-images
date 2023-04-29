@@ -350,15 +350,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                     String targetId = target.getIdentifier(); // PHYS_0023, PHYS_0023
                     String targetImageName = target.getImageName(); // 00000023.jpg, 00000023.jpg
 
-                    //                    log.debug("refType = " + refType);
-                    //                    log.debug("sourceId = " + sourceId);
-                    //                    log.debug("sourceImageName = " + sourceImageName);
-                    //                    log.debug("targetId = " + targetId);
-                    //                    log.debug("targetImageName = " + targetImageName);
-
                     if (!selectedImagesMap.containsKey(targetImageName)) {
-                        //                        source.removeReferenceTo(target);
-                        //                        target.removeReferenceFrom(source);
+                        source.removeReferenceTo(target);
+                        target.removeReferenceFrom(source);
                     }
                 }
 
@@ -367,14 +361,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                 for (ContentFileReference reference : contentFileReferences) {
                     ContentFile cf = reference.getCf();
                     String cfId = cf.getIdentifier(); // FILE_0023
-                    //                    log.debug("cfId = " + cfId);
                 }
 
-                //                log.debug("id = " + id);
-                //                log.debug("imageName = " + imageName);
-
                 if (!selectedImagesMap.containsKey(imageName)) {
-                    //                    boundBook.removeChild(child);
+                    boundBook.removeChild(child);
                 }
             }
 
@@ -387,8 +377,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                 String mdTypeName = md.getType().getName();
                 log.debug("logical has Metadata of type: " + mdTypeName);
             }
-            //            List<Md> mds = logical.getTechMds(); // null
-            //            List<MetadataGroupType> mdgTypes = logical.getDefaultDisplayMetadataGroupTypes(); // null
+
             List<MetadataType> mdTypes = logical.getDefaultDisplayMetadataTypes();
             log.debug("mdTypes {}", mdTypes == null ? "is null" : " has " + mdTypes.size() + " elements"); // 2
             for (MetadataType mdt : mdTypes) {
@@ -398,7 +387,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
             List<DocStruct> logicalChildren = logical.getAllChildren();
             for (DocStruct child : logicalChildren) {
-                //                String type = child.getDocstructType(); // div
                 String id = child.getIdentifier(); // LOG_0006
                 DocStructType dsType = child.getType();
                 String dsTypeName = dsType.getName(); // Figure
@@ -406,14 +394,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                 log.debug("--------------------");
                 log.debug("id = " + id);
                 log.debug("dsTypeName = " + dsTypeName);
-
-                List<ContentFileReference> contentFileReferences = child.getAllContentFileReferences();
-                log.debug("contentFileReferences has size = " + contentFileReferences.size()); // 0
-
-                //                List<Metadata> logicalMetadataList = child.getAllMetadata(); // null
-                //                List<Md> mds = child.getTechMds(); // null
-                //                List<MetadataGroupType> mdgTypes = child.getDefaultDisplayMetadataGroupTypes(); // null
-                //                List<MetadataType> mdTypes = child.getDefaultDisplayMetadataTypes(); // null
 
             }
             
@@ -423,13 +403,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             for (ContentFile file : contentFiles) {
                 boolean shouldRemove = false;
                 List<DocStruct> referenced = file.getReferencedDocStructs();
-                log.debug("referenced has size = " + referenced.size()); // 1
+                //                log.debug("referenced has size = " + referenced.size()); // 1
                 for (DocStruct ds : referenced) {
                     String referencedImageName = ds.getImageName(); // 00000023.jpg
                     String referencedId = ds.getIdentifier(); // PHYS_0023
-
-                    //                    log.debug("referencedId = " + referencedId);
-                    //                    log.debug("referencedImageName = " + referencedImageName);
 
                     if (!selectedImagesMap.containsKey(referencedImageName)) {
                         //                        contentFiles.remove(ds);
@@ -437,15 +414,15 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                     }
                 }
                 if (shouldRemove) {
-                    //                    fileSet.removeFile(file);
+                    fileSet.removeFile(file);
                 }
             }
             
-            //            process.saveTemporaryMetsFile(ff);
+            process.saveTemporaryMetsFile(ff);
 
             return true;
 
-        } catch (ReadException | IOException | SwapException | PreferencesException e) {
+        } catch (ReadException | IOException | SwapException | PreferencesException | WriteException e) {
             String message = "Errors happened trying to export the Mets file.";
             logBoth(process.getId(), LogType.ERROR, message);
             return false;
