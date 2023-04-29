@@ -18,7 +18,6 @@ import org.goobi.production.plugin.interfaces.IExportPlugin;
 import org.goobi.production.plugin.interfaces.IPlugin;
 
 import de.sub.goobi.config.ConfigPlugins;
-import de.sub.goobi.export.dms.ExportDms;
 import de.sub.goobi.helper.StorageProvider;
 import de.sub.goobi.helper.StorageProviderInterface;
 import de.sub.goobi.helper.VariableReplacer;
@@ -103,6 +102,8 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             ff = process.readMetadataFile();
             DigitalDocument dd = ff.getDigitalDocument();
             VariableReplacer replacer = new VariableReplacer(dd, prefs, process, null);
+            propertyName = replacer.replace(propertyName);
+            targetFolder = replacer.replace(targetFolder);
         } catch (ReadException | PreferencesException | IOException | SwapException e) {
             log.error(e);
             problems.add("Cannot read metadata file.");
@@ -116,24 +117,19 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         List<Image> selectedImages = getSelectedImages(process, selectedImagesNames);
-        boolean successful = selectedImages != null;
+        boolean success = selectedImages != null;
         for (Image image : selectedImages) {
             log.debug("image.getImageName() = " + image.getImageName());
             log.debug("image.getImagePath() = " + image.getImagePath());
         }
 
         // export the selected images
-        successful = successful && exportSelectedImages(process, selectedImages);
+        success = success && exportSelectedImages(process, selectedImages);
 
         // export the mets-file
+        success = success && (!exportMetsFile || exportMetsFile(process, selectedImages));
 
-        // do a regular export here
-        IExportPlugin export = new ExportDms();
-        export.setExportFulltext(true);
-        export.setExportImages(true);
-
-        // execute the export and check the success
-        boolean success = export.startExport(process);
+        // check the success
         if (!success) {
             log.error("Export aborted for process with ID " + process.getId());
         } else {
@@ -147,8 +143,8 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         exportMetsFile = config.getBoolean("./exportMetsFile");
         createSubfolders = config.getBoolean("./createSubfolders");
         propertyName = config.getString("./propertyName");
-        sourceFolderName = config.getString("./sourceFolder");
-        targetFolder = config.getString("targetFolder");
+        sourceFolderName = config.getString("./sourceFolder").trim();
+        targetFolder = config.getString("targetFolder").trim();
 
         useScp = config.getBoolean("./useScp", false);
         scpLogin = config.getString("./scpLogin", "");
@@ -228,16 +224,62 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return useScp ? exportSelectedImagesUsingScp(process, selectedImages) : exportSelectedImagesLocally(process, selectedImages);
     }
 
+    // ================= EXPORT USING SCP ================= // 
     private boolean exportSelectedImagesUsingScp(Process process, List<Image> selectedImages) {
+        Path targetFolderPath = Path.of(targetFolder);
+        // create subfolders if configured so
+        boolean success = !createSubfolders || createSubfoldersUsingScp(targetFolderPath);
+
+        // copy all selected images to targetFolderPath
+        for (Image image : selectedImages) {
+            success = success && exportImageUsingScp(image, targetFolderPath);
+        }
+
+        return success;
+    }
+
+    private boolean createSubfoldersUsingScp(Path folderPath) {
 
         return true;
     }
 
-    private boolean exportSelectedImagesLocally(Process process, List<Image> selectedImages) {
+    private boolean exportImageUsingScp(Image image, Path targetFolderPath) {
 
         return true;
+    }
+    // =============== // EXPORT USING SCP // =============== //
+
+    // ================= EXPORT LOCALLY ================= // 
+    private boolean exportSelectedImagesLocally(Process process, List<Image> selectedImages) {
+        Path targetFolderPath = Path.of(targetFolder);
+        // create subfolders if configured so
+        boolean success = !createSubfolders || createSubfoldersLocally(targetFolderPath);
+
+        // copy all selected images to targetFolderPath
+        for (Image image : selectedImages) {
+            success = success && exportImageLocally(image, targetFolderPath);
+        }
+
+        return success;
     }
     
+    private boolean createSubfoldersLocally(Path folderPath) {
+
+        return true;
+    }
+
+    private boolean exportImageLocally(Image image, Path targetFolderPath) {
+
+        return true;
+    }
+
+    // =============== // EXPORT LOCALLY // =============== //
+
+    private boolean exportMetsFile(Process process, List<Image> selectedImages) {
+
+        return true;
+    }
+
     /**
      * 
      * @param process
