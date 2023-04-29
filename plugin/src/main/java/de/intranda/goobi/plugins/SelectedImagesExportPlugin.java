@@ -3,7 +3,9 @@ package de.intranda.goobi.plugins;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.commons.configuration.SubnodeConfiguration;
 import org.apache.commons.configuration.XMLConfiguration;
@@ -113,17 +115,8 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         // get the list of selected images
-        List<String> selectedImagesNames = getSelectedImagesNames(process);
-        for (String name : selectedImagesNames) {
-            log.debug("name = " + name);
-        }
-
-        List<Image> selectedImages = getSelectedImages(process, selectedImagesNames);
+        List<Image> selectedImages = getSelectedImages(process);
         boolean success = selectedImages != null;
-        for (Image image : selectedImages) {
-            log.debug("image.getImageName() = " + image.getImageName());
-            log.debug("image.getImagePath() = " + image.getImagePath());
-        }
 
         // export the selected images
         success = success && exportSelectedImages(process, selectedImages);
@@ -160,8 +153,44 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         log.debug("useScp: {}", useScp ? "yes" : "no");
     }
 
-    private List<String> getSelectedImagesNames(Process process) {
-        List<String> selectedImagesNames = new ArrayList<>();
+    private List<Image> getSelectedImages(Process process) throws IOException, SwapException, DAOException {
+        log.debug("getting selected images");
+        String imageFolder = process.getConfiguredImageFolder(sourceFolderName);
+        if (StringUtils.isBlank(imageFolder)) {
+            String message = "The folder configured as '" + sourceFolderName + "' does not exist yet. Aborting.";
+            logBoth(process.getId(), LogType.INFO, message);
+            return null;
+        }
+
+        Set<String> imageNames = getSelectedImagesNames(process);
+        if (imageNames.isEmpty()) {
+            String message = "No image is selected, aborting.";
+            logBoth(process.getId(), LogType.INFO, message);
+            return null;
+        }
+
+        List<Image> selectedImages = new ArrayList<>();
+
+        Path imageFolderPath = Path.of(imageFolder);
+        log.debug("imageFolderPath = " + imageFolderPath);
+        List<Path> imagePaths = storageProvider.listFiles(imageFolder);
+        log.debug("imagePaths has size " + imagePaths.size());
+
+        Integer thumbnailSize = null;
+        int order = 0;
+        for (Path imagePath : imagePaths) {
+            String fileName = imagePath.getFileName().toString();
+            if (imageNames.contains(fileName)) {
+                Image image = new Image(process, imageFolder, fileName, order++, thumbnailSize);
+                selectedImages.add(image);
+            }
+        }
+
+        return selectedImages;
+    }
+
+    private Set<String> getSelectedImagesNames(Process process) {
+        Set<String> selectedImagesNames = new HashSet<>();
         Processproperty property = getProcessproperty(process);
         if (property != null) {
             String propertyValue = property.getWert();
@@ -180,36 +209,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         return selectedImagesNames;
-    }
-
-    private List<Image> getSelectedImages(Process process, List<String> imageNames) throws IOException, SwapException, DAOException {
-        log.debug("getting selected images");
-        String imageFolder = process.getConfiguredImageFolder(sourceFolderName);
-        if (StringUtils.isBlank(imageFolder)) {
-            log.debug("The folder configured as '" + sourceFolderName + "' does not exist yet.");
-            return null;
-        }
-
-        List<Image> selectedImages = new ArrayList<>();
-
-        Path imageFolderPath = Path.of(imageFolder);
-        log.debug("imageFolderPath = " + imageFolderPath);
-        List<Path> imagePaths = storageProvider.listFiles(imageFolder);
-        log.debug("imagePaths has size " + imagePaths.size());
-
-        Integer thumbnailSize = null;
-        int order = 0;
-        for (String imageName : imageNames) {
-            for (Path imagePath : imagePaths) {
-                String fileName = imagePath.getFileName().toString();
-                if (imageName.equals(fileName)) {
-                    Image image = new Image(process, imageFolder, fileName, order++, thumbnailSize);
-                    selectedImages.add(image);
-                }
-            }
-        }
-
-        return selectedImages;
     }
 
     private Processproperty getProcessproperty(Process process) {
