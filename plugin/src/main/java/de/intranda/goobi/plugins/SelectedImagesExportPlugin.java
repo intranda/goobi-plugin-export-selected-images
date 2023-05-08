@@ -122,11 +122,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             return false;
         }
 
-        // get the list of selected images
+        // get the maps of selected images
         Map<String, Integer> selectedImagesNamesOrderMap = getSelectedImagesNamesOrderMap(process);
         Map<Image, Integer> selectedImagesOrderMap = getSelectedImagesOrderMap(process, selectedImagesNamesOrderMap);
 
-        //        boolean success = selectedImages != null;
         boolean success = selectedImagesOrderMap != null;
 
         // export the selected images
@@ -313,114 +312,30 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     // =============== // EXPORT LOCALLY // =============== //
 
+    // =============== GENERATE AND EXPORT METS FILE =============== //
+
     private boolean exportMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
-        log.debug("exporting Mets file");
+        boolean metsFileGenerated = generateMetsFile(process, selectedImagesNamesOrderMap);
+        return metsFileGenerated && (useScp ? exportMetsFileUsingScp() : exportMetsFileLocally());
+    }
+
+    private boolean generateMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
+        log.debug("generating Mets file");
         try {
             Prefs prefs = process.getRegelsatz().getPreferences();
             Fileformat ff = process.readMetadataFile();
             DigitalDocument dd = ff.getDigitalDocument();
 
-            //            initializeTypes(process);
-
             // physical structure
-            DocStruct boundBook = dd.getPhysicalDocStruct();
-
-            MetadataType typePhysPage = prefs.getMetadataTypeByName("physPageNumber");
-
-            List<DocStruct> children = new ArrayList<>(boundBook.getAllChildren());
-            for (DocStruct child : children) {
-                String id = child.getIdentifier(); // PHYS_0023
-                String imageName = child.getImageName(); // 00000023.jpg
-
-                //                log.debug("--------------------");
-
-                List<Reference> fromReferences = new ArrayList<>(child.getAllFromReferences());
-                //                log.debug("fromReferences has size = " + fromReferences.size()); // 2
-                for (Reference reference : fromReferences) {
-                    String refType = reference.getType(); // logical_physical, logical_physical
-                    DocStruct source = reference.getSource();
-                    DocStruct target = reference.getTarget();
-
-                    String sourceId = source.getIdentifier(); // LOG_0000, LOG_0006
-                    String sourceImageName = source.getImageName(); // null, null
-
-                    String targetId = target.getIdentifier(); // PHYS_0023, PHYS_0023
-                    String targetImageName = target.getImageName(); // 00000023.jpg, 00000023.jpg
-
-                    if (!selectedImagesNamesOrderMap.containsKey(targetImageName)) {
-                        source.removeReferenceTo(target);
-                        target.removeReferenceFrom(source);
-                    }
-                }
-
-                List<ContentFileReference> contentFileReferences = child.getAllContentFileReferences();
-                //                log.debug("contentFileReferences has size = " + contentFileReferences.size()); // 1
-                for (ContentFileReference reference : contentFileReferences) {
-                    ContentFile cf = reference.getCf();
-                    String cfId = cf.getIdentifier(); // FILE_0023
-                }
-
-                if (selectedImagesNamesOrderMap.containsKey(imageName)) {
-                    // update physical order of the image page
-                    Metadata physPage = child.getAllMetadataByType(typePhysPage).get(0);
-                    physPage.setValue(selectedImagesNamesOrderMap.get(imageName).toString());
-                } else {
-                    boundBook.removeChild(child);
-                }
-
-            }
-
+            processPhysicalStructure(prefs, dd, selectedImagesNamesOrderMap);
 
             // logical structure
-            DocStruct logical = dd.getLogicalDocStruct();
-
-            List<Metadata> logicalMetadataList = logical.getAllMetadata();
-            log.debug("logicalMetadataList {}", logicalMetadataList == null ? "is null" : " has " + logicalMetadataList.size() + " elements"); // 23
-            for (Metadata md : logicalMetadataList) {
-                String mdTypeName = md.getType().getName();
-                log.debug("logical has Metadata of type: " + mdTypeName);
-            }
-
-            List<MetadataType> mdTypes = logical.getDefaultDisplayMetadataTypes();
-            log.debug("mdTypes {}", mdTypes == null ? "is null" : " has " + mdTypes.size() + " elements"); // 2
-            for (MetadataType mdt : mdTypes) {
-                String mdTypeName = mdt.getName();
-                log.debug("logical has MetadataType: " + mdTypeName);
-            }
-
-            List<DocStruct> logicalChildren = logical.getAllChildren();
-            for (DocStruct child : logicalChildren) {
-                String id = child.getIdentifier(); // LOG_0006
-                DocStructType dsType = child.getType();
-                String dsTypeName = dsType.getName(); // Figure
-
-                log.debug("--------------------");
-                log.debug("id = " + id);
-                log.debug("dsTypeName = " + dsTypeName);
-
-            }
+            processLogicalStructure(dd);
             
             // file set
-            FileSet fileSet = dd.getFileSet();
-            List<ContentFile> contentFiles = new ArrayList<>(fileSet.getAllFiles());
-            for (ContentFile file : contentFiles) {
-                boolean shouldRemove = false;
-                List<DocStruct> referenced = file.getReferencedDocStructs();
-                //                log.debug("referenced has size = " + referenced.size()); // 1
-                for (DocStruct ds : referenced) {
-                    String referencedImageName = ds.getImageName(); // 00000023.jpg
-                    String referencedId = ds.getIdentifier(); // PHYS_0023
+            processFileSet(dd, selectedImagesNamesOrderMap);
 
-                    if (!selectedImagesNamesOrderMap.containsKey(referencedImageName)) {
-                        //                        contentFiles.remove(ds);
-                        shouldRemove = true;
-                    }
-                }
-                if (shouldRemove) {
-                    fileSet.removeFile(file);
-                }
-            }
-            
+            // generate temporary mets file
             process.saveTemporaryMetsFile(ff);
 
             return true;
@@ -431,6 +346,115 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             return false;
         }
     }
+
+    private void processPhysicalStructure(Prefs prefs, DigitalDocument dd, Map<String, Integer> selectedImagesNamesOrderMap) {
+        DocStruct physical = dd.getPhysicalDocStruct();
+
+        MetadataType typePhysPage = prefs.getMetadataTypeByName("physPageNumber");
+
+        List<DocStruct> children = new ArrayList<>(physical.getAllChildren());
+        for (DocStruct child : children) {
+            String id = child.getIdentifier(); // PHYS_0023
+            String imageName = child.getImageName(); // 00000023.jpg
+
+            //                log.debug("--------------------");
+
+            List<Reference> fromReferences = new ArrayList<>(child.getAllFromReferences());
+            //                log.debug("fromReferences has size = " + fromReferences.size()); // 2
+            for (Reference reference : fromReferences) {
+                String refType = reference.getType(); // logical_physical, logical_physical
+                DocStruct source = reference.getSource();
+                DocStruct target = reference.getTarget();
+
+                String sourceId = source.getIdentifier(); // LOG_0000, LOG_0006
+                String sourceImageName = source.getImageName(); // null, null
+
+                String targetId = target.getIdentifier(); // PHYS_0023, PHYS_0023
+                String targetImageName = target.getImageName(); // 00000023.jpg, 00000023.jpg
+
+                if (!selectedImagesNamesOrderMap.containsKey(targetImageName)) {
+                    source.removeReferenceTo(target);
+                    target.removeReferenceFrom(source);
+                }
+            }
+
+            List<ContentFileReference> contentFileReferences = child.getAllContentFileReferences();
+            //                log.debug("contentFileReferences has size = " + contentFileReferences.size()); // 1
+            for (ContentFileReference reference : contentFileReferences) {
+                ContentFile cf = reference.getCf();
+                String cfId = cf.getIdentifier(); // FILE_0023
+            }
+
+            if (selectedImagesNamesOrderMap.containsKey(imageName)) {
+                // update physical order of the image page
+                Metadata physPage = child.getAllMetadataByType(typePhysPage).get(0);
+                physPage.setValue(selectedImagesNamesOrderMap.get(imageName).toString());
+            } else {
+                physical.removeChild(child);
+            }
+        }
+    }
+
+    private void processLogicalStructure(DigitalDocument dd) {
+        DocStruct logical = dd.getLogicalDocStruct();
+
+        List<Metadata> logicalMetadataList = logical.getAllMetadata();
+        log.debug("logicalMetadataList {}", logicalMetadataList == null ? "is null" : " has " + logicalMetadataList.size() + " elements"); // 23
+        for (Metadata md : logicalMetadataList) {
+            String mdTypeName = md.getType().getName();
+            log.debug("logical has Metadata of type: " + mdTypeName);
+        }
+
+        List<MetadataType> mdTypes = logical.getDefaultDisplayMetadataTypes();
+        log.debug("mdTypes {}", mdTypes == null ? "is null" : " has " + mdTypes.size() + " elements"); // 2
+        for (MetadataType mdt : mdTypes) {
+            String mdTypeName = mdt.getName();
+            log.debug("logical has MetadataType: " + mdTypeName);
+        }
+
+        List<DocStruct> logicalChildren = logical.getAllChildren();
+        for (DocStruct child : logicalChildren) {
+            String id = child.getIdentifier(); // LOG_0006
+            DocStructType dsType = child.getType();
+            String dsTypeName = dsType.getName(); // Figure
+
+            log.debug("--------------------");
+            log.debug("id = " + id);
+            log.debug("dsTypeName = " + dsTypeName);
+        }
+    }
+
+    private void processFileSet(DigitalDocument dd, Map<String, Integer> selectedImagesNamesOrderMap) {
+        FileSet fileSet = dd.getFileSet();
+        List<ContentFile> contentFiles = new ArrayList<>(fileSet.getAllFiles());
+        for (ContentFile file : contentFiles) {
+            boolean shouldRemove = false;
+            List<DocStruct> referenced = file.getReferencedDocStructs();
+            //                log.debug("referenced has size = " + referenced.size()); // 1
+            for (DocStruct ds : referenced) {
+                String referencedImageName = ds.getImageName(); // 00000023.jpg
+                String referencedId = ds.getIdentifier(); // PHYS_0023
+
+                if (!selectedImagesNamesOrderMap.containsKey(referencedImageName)) {
+                    //                        contentFiles.remove(ds);
+                    shouldRemove = true;
+                }
+            }
+            if (shouldRemove) {
+                fileSet.removeFile(file);
+            }
+        }
+    }
+
+    private boolean exportMetsFileUsingScp() {
+        return true;
+    }
+
+    private boolean exportMetsFileLocally() {
+        return true;
+    }
+
+    // =============== // GENERATE AND EXPORT METS FILE // =============== //
 
     /**
      * 
