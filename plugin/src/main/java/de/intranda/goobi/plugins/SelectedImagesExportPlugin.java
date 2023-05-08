@@ -4,10 +4,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.apache.commons.configuration.SubnodeConfiguration;
 import org.apache.commons.configuration.XMLConfiguration;
@@ -125,14 +123,17 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         // get the list of selected images
-        List<Image> selectedImages = getSelectedImages(process);
-        boolean success = selectedImages != null;
+        Map<String, Integer> selectedImagesNamesOrderMap = getSelectedImagesNamesOrderMap(process);
+        Map<Image, Integer> selectedImagesOrderMap = getSelectedImagesOrderMap(process, selectedImagesNamesOrderMap);
+
+        //        boolean success = selectedImages != null;
+        boolean success = selectedImagesOrderMap != null;
 
         // export the selected images
-        success = success && exportSelectedImages(process, selectedImages);
+        success = success && exportSelectedImages(process, selectedImagesOrderMap);
 
         // export the mets-file
-        success = success && (!exportMetsFile || exportMetsFile(process, selectedImages));
+        success = success && (!exportMetsFile || exportMetsFile(process, selectedImagesNamesOrderMap));
 
         // check the success
         if (!success) {
@@ -163,8 +164,16 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         log.debug("useScp: {}", useScp ? "yes" : "no");
     }
 
-    private List<Image> getSelectedImages(Process process) throws IOException, SwapException, DAOException {
+    private Map<Image, Integer> getSelectedImagesOrderMap(Process process, Map<String, Integer> imageNamesOrderMap)
+            throws IOException, SwapException, DAOException {
         log.debug("getting selected images");
+        // check the names-order map
+        if (imageNamesOrderMap.isEmpty()) {
+            String message = "No image is selected, aborting.";
+            logBoth(process.getId(), LogType.INFO, message);
+            return null;
+        }
+
         // check source folder
         String imageFolder = process.getConfiguredImageFolder(sourceFolderName);
         if (StringUtils.isBlank(imageFolder)) {
@@ -174,14 +183,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         // get names of all selected images
-        Set<String> imageNames = getSelectedImagesNames(process);
-        if (imageNames.isEmpty()) {
-            String message = "No image is selected, aborting.";
-            logBoth(process.getId(), LogType.INFO, message);
-            return null;
-        }
-
-        List<Image> selectedImages = new ArrayList<>();
+        Map<Image, Integer> selectedImagesOrderMap = new HashMap<>();
 
         Path imageFolderPath = Path.of(imageFolder);
         log.debug("imageFolderPath = " + imageFolderPath);
@@ -192,17 +194,17 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         int order = 0;
         for (Path imagePath : imagePaths) {
             String fileName = imagePath.getFileName().toString();
-            if (imageNames.contains(fileName)) {
+            if (imageNamesOrderMap.containsKey(fileName)) {
                 Image image = new Image(process, imageFolder, fileName, order++, thumbnailSize);
-                selectedImages.add(image);
+                selectedImagesOrderMap.put(image, imageNamesOrderMap.get(fileName));
             }
         }
 
-        return selectedImages;
+        return selectedImagesOrderMap;
     }
 
-    private Set<String> getSelectedImagesNames(Process process) {
-        Set<String> selectedImagesNames = new HashSet<>();
+    private Map<String, Integer> getSelectedImagesNamesOrderMap(Process process) {
+        Map<String, Integer> selectedImagesNamesOrderMap = new HashMap<>();
         Processproperty property = getProcessproperty(process);
         if (property != null) {
             String propertyValue = property.getWert();
@@ -216,11 +218,11 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                 // remove " from both ends
                 String reducedImageName = imageName.substring(1, imageName.length() - 1);
                 int imageOrder = Integer.parseInt(itemParts[1]);
-                selectedImagesNames.add(reducedImageName);
+                selectedImagesNamesOrderMap.put(reducedImageName, imageOrder);
             }
         }
 
-        return selectedImagesNames;
+        return selectedImagesNamesOrderMap;
     }
 
     private Processproperty getProcessproperty(Process process) {
@@ -233,19 +235,19 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return null;
     }
 
-    private boolean exportSelectedImages(Process process, List<Image> selectedImages) {
+    private boolean exportSelectedImages(Process process, Map<Image, Integer> selectedImagesMap) {
         int processId = process.getId();
-        return useScp ? exportSelectedImagesUsingScp(processId, selectedImages) : exportSelectedImagesLocally(processId, selectedImages);
+        return useScp ? exportSelectedImagesUsingScp(processId, selectedImagesMap) : exportSelectedImagesLocally(processId, selectedImagesMap);
     }
 
     // ================= EXPORT USING SCP ================= // 
-    private boolean exportSelectedImagesUsingScp(int processId, List<Image> selectedImages) {
+    private boolean exportSelectedImagesUsingScp(int processId, Map<Image, Integer> selectedImagesMap) {
         Path targetFolderPath = Path.of(targetFolder);
         // create subfolders if configured so
         boolean success = !createSubfolders || createSubfoldersUsingScp(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
-        for (Image image : selectedImages) {
+        for (Image image : selectedImagesMap.keySet()) {
             success = success && exportImageUsingScp(processId, image, targetFolderPath);
         }
 
@@ -264,13 +266,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== // EXPORT USING SCP // =============== //
 
     // ================= EXPORT LOCALLY ================= // 
-    private boolean exportSelectedImagesLocally(int processId, List<Image> selectedImages) {
+    private boolean exportSelectedImagesLocally(int processId, Map<Image, Integer> selectedImagesMap) {
         Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
         // create subfolders if configured so    
         boolean success = !createSubfolders || createFoldersLocally(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
-        for (Image image : selectedImages) {
+        for (Image image : selectedImagesMap.keySet()) {
             success = success && exportImageLocally(processId, image, targetFolderPath);
         }
 
@@ -311,14 +313,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     // =============== // EXPORT LOCALLY // =============== //
 
-    private boolean exportMetsFile(Process process, List<Image> selectedImages) {
-        Map<String, Integer> selectedImagesMap = new HashMap<>();
-        for (int i = 0; i < selectedImages.size(); ++i) {
-            Image image = selectedImages.get(i);
-            String imageName = image.getImageName();
-            selectedImagesMap.put(imageName, i);
-        }
-
+    private boolean exportMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
         log.debug("exporting Mets file");
         try {
             Prefs prefs = process.getRegelsatz().getPreferences();
@@ -329,6 +324,8 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
             // physical structure
             DocStruct boundBook = dd.getPhysicalDocStruct();
+
+            MetadataType typePhysPage = prefs.getMetadataTypeByName("physPageNumber");
 
             List<DocStruct> children = new ArrayList<>(boundBook.getAllChildren());
             for (DocStruct child : children) {
@@ -350,7 +347,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                     String targetId = target.getIdentifier(); // PHYS_0023, PHYS_0023
                     String targetImageName = target.getImageName(); // 00000023.jpg, 00000023.jpg
 
-                    if (!selectedImagesMap.containsKey(targetImageName)) {
+                    if (!selectedImagesNamesOrderMap.containsKey(targetImageName)) {
                         source.removeReferenceTo(target);
                         target.removeReferenceFrom(source);
                     }
@@ -363,10 +360,16 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                     String cfId = cf.getIdentifier(); // FILE_0023
                 }
 
-                if (!selectedImagesMap.containsKey(imageName)) {
+                if (selectedImagesNamesOrderMap.containsKey(imageName)) {
+                    // update physical order of the image page
+                    Metadata physPage = child.getAllMetadataByType(typePhysPage).get(0);
+                    physPage.setValue(selectedImagesNamesOrderMap.get(imageName).toString());
+                } else {
                     boundBook.removeChild(child);
                 }
+
             }
+
 
             // logical structure
             DocStruct logical = dd.getLogicalDocStruct();
@@ -408,7 +411,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                     String referencedImageName = ds.getImageName(); // 00000023.jpg
                     String referencedId = ds.getIdentifier(); // PHYS_0023
 
-                    if (!selectedImagesMap.containsKey(referencedImageName)) {
+                    if (!selectedImagesNamesOrderMap.containsKey(referencedImageName)) {
                         //                        contentFiles.remove(ds);
                         shouldRemove = true;
                     }
@@ -461,7 +464,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      * @param message message to be shown to both terminal and journal
      */
     private void logBoth(int processId, LogType logType, String message) {
-        String logMessage = "VLM Export Plugin: " + message;
+        String logMessage = "Selected Images Export Plugin: " + message;
         switch (logType) {
             case ERROR:
                 log.error(logMessage);
