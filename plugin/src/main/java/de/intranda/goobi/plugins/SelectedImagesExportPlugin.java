@@ -250,6 +250,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private boolean exportSelectedImages(Process process, Map<Image, Integer> selectedImagesMap) {
         int processId = process.getId();
+        // create subfolders if configured so    
         Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
 
         return useScp ? exportSelectedImagesUsingScp(processId, selectedImagesMap, targetFolderPath)
@@ -261,8 +262,8 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         // check all necessary fields
         boolean success = checkFieldsForScp(processId);
 
-        // create subfolders if configured so
-        success = success && (!createSubfolders || createSubfoldersUsingScp(processId, targetFolderPath));
+        // create folders if necessary
+        success = success && createFoldersUsingScp(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
         for (Image image : selectedImagesMap.keySet()) {
@@ -272,7 +273,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return success;
     }
 
-    private boolean createSubfoldersUsingScp(int processId, Path folderPath) {
+    private boolean createFoldersUsingScp(int processId, Path folderPath) {
         ChannelExec channelExec = getChannelExec(processId);
 
         if (channelExec == null) {
@@ -329,8 +330,8 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     // ================= EXPORT LOCALLY ================= // 
     private boolean exportSelectedImagesLocally(int processId, Map<Image, Integer> selectedImagesMap, Path targetFolderPath) {
-        // create subfolders if configured so    
-        boolean success = !createSubfolders || createFoldersLocally(processId, targetFolderPath);
+        // create folders if necessary
+        boolean success = createFoldersLocally(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
         for (Image image : selectedImagesMap.keySet()) {
