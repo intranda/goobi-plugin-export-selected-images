@@ -77,6 +77,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private static StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
+    private static final String TEMP_FILE_NAME = "temp.xml";
+    private static final String METS_FILE_NAME = "mets.xml";
+
     @Getter
     private List<String> problems;
 
@@ -316,7 +319,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private boolean exportMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
         boolean metsFileGenerated = generateMetsFile(process, selectedImagesNamesOrderMap);
-        return metsFileGenerated && (useScp ? exportMetsFileUsingScp() : exportMetsFileLocally());
+        return metsFileGenerated && (useScp ? exportMetsFileUsingScp(process) : exportMetsFileLocally(process));
     }
 
     private boolean generateMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
@@ -446,12 +449,32 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
-    private boolean exportMetsFileUsingScp() {
+    private boolean exportMetsFileUsingScp(Process process) {
         return true;
     }
 
-    private boolean exportMetsFileLocally() {
-        return true;
+    private boolean exportMetsFileLocally(Process process) {
+        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
+        // folders should already be created while trying to copy the image files, hence no need to create them again
+
+        try {
+            String processDataDirectory = process.getProcessDataDirectory();
+            log.debug("processDataDirectory = " + processDataDirectory);
+
+            Path sourcePath = Path.of(processDataDirectory, TEMP_FILE_NAME);
+            log.debug("sourcePath = " + sourcePath);
+
+            Path targetPath = targetFolderPath.resolve(METS_FILE_NAME);
+            log.debug("targetPath = " + targetPath);
+
+            storageProvider.copyFile(sourcePath, targetPath);
+            return true;
+
+        } catch (IOException | SwapException e) {
+            String message = "Exceptions happened while trying to export the Mets file locally.";
+            logBoth(process.getId(), LogType.ERROR, message);
+            return false;
+        }
     }
 
     // =============== // GENERATE AND EXPORT METS FILE // =============== //
