@@ -20,6 +20,11 @@ import org.goobi.production.enums.PluginType;
 import org.goobi.production.plugin.interfaces.IExportPlugin;
 import org.goobi.production.plugin.interfaces.IPlugin;
 
+import com.jcraft.jsch.ChannelExec;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+
 import de.sub.goobi.config.ConfigPlugins;
 import de.sub.goobi.helper.Helper;
 import de.sub.goobi.helper.StorageProvider;
@@ -72,8 +77,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private String targetFolder;
 
     private boolean useScp;
+    private String knownHosts;
     private String scpLogin;
     private String scpPassword;
+    private String scpHostname;
 
     private static StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
@@ -155,8 +162,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         targetFolder = config.getString("targetFolder").trim();
 
         useScp = config.getBoolean("./useScp", false);
+        knownHosts = config.getString("knownHosts", "");
         scpLogin = config.getString("./scpLogin", "");
         scpPassword = config.getString("./scpPassword", "");
+        scpHostname = config.getString("./scpHostname", "");
 
         log.debug("exportMetsFile: {}", exportMetsFile ? "yes" : "no");
         log.debug("createSubfolders: {}", createSubfolders ? "yes" : "no");
@@ -239,14 +248,19 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private boolean exportSelectedImages(Process process, Map<Image, Integer> selectedImagesMap) {
         int processId = process.getId();
-        return useScp ? exportSelectedImagesUsingScp(processId, selectedImagesMap) : exportSelectedImagesLocally(processId, selectedImagesMap);
+        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
+
+        return useScp ? exportSelectedImagesUsingScp(processId, selectedImagesMap, targetFolderPath)
+                : exportSelectedImagesLocally(processId, selectedImagesMap, targetFolderPath);
     }
 
     // ================= EXPORT USING SCP ================= // 
-    private boolean exportSelectedImagesUsingScp(int processId, Map<Image, Integer> selectedImagesMap) {
-        Path targetFolderPath = Path.of(targetFolder);
+    private boolean exportSelectedImagesUsingScp(int processId, Map<Image, Integer> selectedImagesMap, Path targetFolderPath) {
+        // check all necessary fields
+        boolean success = checkFieldsForScp(processId);
+
         // create subfolders if configured so
-        boolean success = !createSubfolders || createSubfoldersUsingScp(processId, targetFolderPath);
+        success = success && (!createSubfolders || createSubfoldersUsingScp(processId, targetFolderPath));
 
         // copy all selected images to targetFolderPath
         for (Image image : selectedImagesMap.keySet()) {
@@ -265,11 +279,33 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
         return true;
     }
+
+    private boolean checkFieldsForScp(int processId) {
+        String message = "";
+        if (StringUtils.isBlank(knownHosts)) {
+            knownHosts = System.getProperty("user.home").concat("/.ssh/known_hosts");
+        }
+        if (StringUtils.isBlank(scpLogin)) {
+            message += "scpLogin should not be blank. ";
+        }
+        if (StringUtils.isBlank(scpPassword)) {
+            message += "scpPassword should not be blank. ";
+        }
+        if (StringUtils.isBlank(scpHostname)) {
+            message += "scpHostname should not be blank. ";
+        }
+
+        if (StringUtils.isNotBlank(message)) {
+            logBoth(processId, LogType.ERROR, message);
+            return false;
+        }
+
+        return true;
+    }
     // =============== // EXPORT USING SCP // =============== //
 
     // ================= EXPORT LOCALLY ================= // 
-    private boolean exportSelectedImagesLocally(int processId, Map<Image, Integer> selectedImagesMap) {
-        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
+    private boolean exportSelectedImagesLocally(int processId, Map<Image, Integer> selectedImagesMap, Path targetFolderPath) {
         // create subfolders if configured so    
         boolean success = !createSubfolders || createFoldersLocally(processId, targetFolderPath);
 
@@ -478,6 +514,21 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     }
 
     // =============== // GENERATE AND EXPORT METS FILE // =============== //
+
+    /**
+     * 
+     * @return ChannelSftp object
+     * @throws JSchException
+     */
+    private ChannelExec setupJSch() throws JSchException {
+        JSch jsch = new JSch();
+        jsch.setKnownHosts(knownHosts);
+        Session jschSession = jsch.getSession(scpLogin, scpHostname);
+        jschSession.setPassword(scpPassword);
+        jschSession.connect();
+
+        return (ChannelExec) jschSession.openChannel("exec");
+    }
 
     /**
      * 
