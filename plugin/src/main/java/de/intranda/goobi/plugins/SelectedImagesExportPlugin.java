@@ -74,6 +74,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     @Setter
     private Step step;
 
+    private boolean exportJsonFile;
     private boolean exportMetsFile;
     private boolean createSubfolders;
     private String propertyName;
@@ -145,6 +146,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         // export the selected images
         success = success && exportSelectedImages(process, selectedImagesOrderMap);
 
+        // export the JSON-file
+        success = success && (!exportJsonFile || exportJsonFile(process, selectedImagesNamesOrderMap));
+
         // export the mets-file
         success = success && (!exportMetsFile || exportMetsFile(process, selectedImagesNamesOrderMap));
 
@@ -159,18 +163,20 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private void initializeFields(Process process) {
         SubnodeConfiguration config = getConfig(process);
-        exportMetsFile = config.getBoolean("./exportMetsFile");
-        createSubfolders = config.getBoolean("./createSubfolders");
-        propertyName = config.getString("./propertyName");
-        sourceFolderName = config.getString("./sourceFolder").trim();
-        targetFolder = config.getString("targetFolder").trim();
+        exportJsonFile = config.getBoolean("./exportJSON", false);
+        exportMetsFile = config.getBoolean("./exportMetsFile", false);
+        createSubfolders = config.getBoolean("./createSubfolders", false);
+        propertyName = config.getString("./propertyName", "").trim();
+        sourceFolderName = config.getString("./sourceFolder", "").trim();
+        targetFolder = config.getString("targetFolder", "").trim();
 
         useScp = config.getBoolean("./useScp", false);
-        knownHosts = config.getString("knownHosts", "");
+        knownHosts = config.getString("knownHosts", "").trim();
         scpLogin = config.getString("./scpLogin", "");
         scpPassword = config.getString("./scpPassword", "");
-        scpHostname = config.getString("./scpHostname", "");
+        scpHostname = config.getString("./scpHostname", "").trim();
 
+        log.debug("exportJSON: {}", exportJsonFile ? "yes" : "no");
         log.debug("exportMetsFile: {}", exportMetsFile ? "yes" : "no");
         log.debug("createSubfolders: {}", createSubfolders ? "yes" : "no");
         log.debug("propertyName = " + propertyName);
@@ -247,6 +253,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                 return p;
             }
         }
+        // nothing found, report it
+        String message = "Can not find a proper process property. Please recheck your configuration.";
+        logBoth(process.getId(), LogType.INFO, message);
         return null;
     }
 
@@ -378,12 +387,27 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     // =============== // EXPORT LOCALLY // =============== //
 
+    // =============== GENERATE AND EXPORT JSON FILE =============== //
+    private boolean exportJsonFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
+        boolean jsonFileGenerated = generateJsonFile(process, selectedImagesNamesOrderMap);
+        if (!jsonFileGenerated) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean generateJsonFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
+
+        return true;
+    }
+    // =============== // GENERATE AND EXPORT JSON FILE // =============== //
+
     // =============== GENERATE AND EXPORT METS FILE =============== //
 
     private boolean exportMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
         // folders should already be created while trying to copy the image files, hence no need to create them again
         boolean metsFileGenerated = generateMetsFile(process, selectedImagesNamesOrderMap);
-
         if (!metsFileGenerated) {
             return false;
         }
