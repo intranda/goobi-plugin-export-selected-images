@@ -313,34 +313,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return exportFileUsingScp(processId, imageName, imageSourcePath, imageTargetPath);
     }
 
-    static int checkAck(InputStream in) throws IOException {
-        int b = in.read();
-        // b may be 0 for success,
-        //          1 for error,
-        //          2 for fatal error,
-        //          -1
-        if (b == 0)
-            return b;
-        if (b == -1)
-            return b;
-
-        if (b == 1 || b == 2) {
-            StringBuffer sb = new StringBuffer();
-            int c;
-            do {
-                c = in.read();
-                sb.append((char) c);
-            } while (c != '\n');
-            if (b == 1) { // error
-                System.out.print(sb.toString());
-            }
-            if (b == 2) { // fatal error
-                System.out.print(sb.toString());
-            }
-        }
-        return b;
-    }
-
     private boolean checkFieldsForScp(int processId) {
         String message = "";
         if (StringUtils.isBlank(knownHosts)) {
@@ -415,8 +387,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== GENERATE AND EXPORT METS FILE =============== //
 
     private boolean exportMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
+        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
         boolean metsFileGenerated = generateMetsFile(process, selectedImagesNamesOrderMap);
-        return metsFileGenerated && (useScp ? exportMetsFileUsingScp(process) : exportMetsFileLocally(process));
+
+        return metsFileGenerated && (useScp ? exportMetsFileUsingScp(process, targetFolderPath) : exportMetsFileLocally(process, targetFolderPath));
     }
 
     private boolean generateMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
@@ -546,14 +520,31 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
-    private boolean exportMetsFileUsingScp(Process process) {
-        return true;
+    private boolean exportMetsFileUsingScp(Process process, Path targetFolderPath) {
+        // folders should already be created while trying to copy the image files, hence no need to create them again
+        try {
+            String fileName = "temp.xml";
+
+            String processDataDirectory = process.getProcessDataDirectory();
+            log.debug("processDataDirectory = " + processDataDirectory);
+
+            Path sourcePath = Path.of(processDataDirectory, TEMP_FILE_NAME);
+            log.debug("sourcePath = " + sourcePath);
+
+            Path targetPath = targetFolderPath.resolve(METS_FILE_NAME);
+            log.debug("targetPath = " + targetPath);
+
+            return exportFileUsingScp(process.getId(), fileName, sourcePath.toString(), targetPath.toString());
+
+        } catch (IOException | SwapException e) {
+            String message = "Exceptions happened while trying to export the Mets file via scp.";
+            logBoth(process.getId(), LogType.ERROR, message);
+            return false;
+        }
     }
 
-    private boolean exportMetsFileLocally(Process process) {
-        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
+    private boolean exportMetsFileLocally(Process process, Path targetFolderPath) {
         // folders should already be created while trying to copy the image files, hence no need to create them again
-
         try {
             String processDataDirectory = process.getProcessDataDirectory();
             log.debug("processDataDirectory = " + processDataDirectory);
@@ -735,5 +726,38 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         if (processId > 0) {
             Helper.addMessageToProcessJournal(processId, logType, logMessage);
         }
+    }
+
+    private static int checkAck(InputStream in) throws IOException {
+        int b = in.read();
+        // b may be 0 for success,
+        //          1 for error,
+        //          2 for fatal error,
+        //          -1
+        if (b == 0)
+            return b;
+        if (b == -1)
+            return b;
+
+        if (b == 1 || b == 2) {
+            StringBuffer sb = new StringBuffer();
+            int c;
+            do {
+                c = in.read();
+                sb.append((char) c);
+            } while (c != '\n');
+
+            String message = "";
+            if (b == 1) { // error
+                message = "Error happened trying to export file using scp: " + sb.toString();
+            }
+            if (b == 2) { // fatal error
+                message = "Fatal error happened trying to export file using scp: " + sb.toString();
+            }
+            if (StringUtils.isNotBlank(message)) {
+                log.error(message);
+            }
+        }
+        return b;
     }
 }
