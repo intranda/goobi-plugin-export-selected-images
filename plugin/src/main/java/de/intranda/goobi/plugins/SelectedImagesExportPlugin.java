@@ -1,11 +1,14 @@
 package de.intranda.goobi.plugins;
 
+import java.awt.Dimension;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -39,6 +42,7 @@ import de.sub.goobi.helper.exceptions.ExportFileException;
 import de.sub.goobi.helper.exceptions.SwapException;
 import de.sub.goobi.helper.exceptions.UghHelperException;
 import de.sub.goobi.metadaten.Image;
+import de.sub.goobi.metadaten.Image.Type;
 import de.sub.goobi.persistence.managers.PropertyManager;
 import lombok.Getter;
 import lombok.Setter;
@@ -147,7 +151,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         success = success && exportSelectedImages(process, selectedImagesOrderMap);
 
         // export the JSON-file
-        success = success && (!exportJsonFile || exportJsonFile(process, selectedImagesNamesOrderMap));
+        success = success && (!exportJsonFile || exportJsonFile(process, selectedImagesNamesOrderMap, selectedImagesOrderMap));
 
         // export the mets-file
         success = success && (!exportMetsFile || exportMetsFile(process, selectedImagesNamesOrderMap));
@@ -388,8 +392,8 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== // EXPORT LOCALLY // =============== //
 
     // =============== GENERATE AND EXPORT JSON FILE =============== //
-    private boolean exportJsonFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
-        boolean jsonFileGenerated = generateJsonFile(process, selectedImagesNamesOrderMap);
+    private boolean exportJsonFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap, Map<Image, Integer> selectedImagesOrderMap) {
+        boolean jsonFileGenerated = generateJsonFile(process, selectedImagesNamesOrderMap, selectedImagesOrderMap);
         if (!jsonFileGenerated) {
             return false;
         }
@@ -397,7 +401,70 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return true;
     }
 
-    private boolean generateJsonFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
+    private boolean generateJsonFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap, Map<Image, Integer> selectedImagesOrderMap) {
+        for (Image image : selectedImagesOrderMap.keySet()) {
+            log.debug("---------------------");
+            // 00000018.jpg
+            String imageName = image.getImageName();
+            // http://localhost:8080/goobi/api/process/image/4/thunspec_577843346_media/00000018.jpg/full/1000,/0/default.jpg
+            String bookmarkUrl = image.getBookmarkUrl();
+            // /opt/digiverso/goobi/metadata/4/images/thunspec_577843346_media/00000018.jpg
+            Path imagePath = image.getImagePath();
+            // jpeg
+            String largeImageFormat = image.getLargeImageFormat();
+            // http://localhost:8080/goobi/api/process/image/4/thunspec_577843346_media/00000018.jpg/full/600,/0/default.jpg
+            String largeImageThumbnailUrl = image.getLargeThumbnailUrl();
+            // http://localhost:8080/goobi/api/process/image/4/thunspec_577843346_media/00000018.jpg/info.json
+            String objectUrl = image.getObjectUrl();
+            // 3 (selected images are 5, 1, 18, 17)
+            int order = image.getOrder();
+            // height = 1824.0, width = 1824.0
+            Dimension dimension = image.getSize();
+            // jpeg
+            String thumbnailFormat = image.getThumbnailFormat();
+            // http://localhost:8080/goobi/api/process/image/4/thunspec_577843346_media/00000018.jpg/full/200,/0/default.jpg
+            String thumbnailUrl = image.getThumbnailUrl();
+            // 00000018.jpg
+            String tooltip = image.getTooltip();
+            // http://localhost:8080/goobi/api/process/image/4/thunspec_577843346_media/00000018.jpg/info.json
+            String url = image.getUrl();
+            // image
+            Type type = image.getType();
+
+            log.debug("imageName = " + imageName);
+            log.debug("bookmarkUrl = " + bookmarkUrl);
+            log.debug("imagePath = " + imagePath);
+            log.debug("largeImageFormat = " + largeImageFormat);
+            log.debug("largeImageThumbnailUrl = " + largeImageThumbnailUrl);
+            log.debug("objectUrl = " + objectUrl);
+            log.debug("order = " + order);
+            log.debug("image height = " + dimension.getHeight());
+            log.debug("image width = " + dimension.getWidth());
+            log.debug("thumbnailFormat = " + thumbnailFormat);
+            log.debug("thumbnailUrl = " + thumbnailUrl);
+            log.debug("tooltip = " + tooltip);
+            log.debug("url = " + url);
+            log.debug("type = " + type);
+
+            try {
+                BasicFileAttributes attr = Files.readAttributes(imagePath, BasicFileAttributes.class);
+                log.debug("creation time = " + attr.creationTime()); // 2022-11-01T09:19:56Z
+                log.debug("last access time = " + attr.lastAccessTime()); // 2023-05-09T10:51:05.404133Z
+                log.debug("last modified time = " + attr.lastModifiedTime()); // 2022-11-01T09:19:56Z
+
+                long creationDate = storageProvider.getCreationDate(imagePath); // 1667294396000
+                String fileCreationTime = storageProvider.getFileCreationTime(imagePath); // 2022-11-01T09:19:56Z
+                long lastModifiedDate = storageProvider.getLastModifiedDate(imagePath); // 1667294396000
+                log.debug("creationDate = " + creationDate);
+                log.debug("fileCreationTime = " + fileCreationTime);
+                log.debug("lastModifiedDate = " + lastModifiedDate);
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+
+            log.debug("---------------------");
+        }
 
         return true;
     }
