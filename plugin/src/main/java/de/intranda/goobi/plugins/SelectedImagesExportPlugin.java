@@ -381,10 +381,37 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== GENERATE AND EXPORT METS FILE =============== //
 
     private boolean exportMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
-        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
+        // folders should already be created while trying to copy the image files, hence no need to create them again
         boolean metsFileGenerated = generateMetsFile(process, selectedImagesNamesOrderMap);
 
-        return metsFileGenerated && (useScp ? exportMetsFileUsingScp(process, targetFolderPath) : exportMetsFileLocally(process, targetFolderPath));
+        if (!metsFileGenerated) {
+            return false;
+        }
+
+        try {
+            String processDataDirectory = process.getProcessDataDirectory();
+            log.debug("processDataDirectory = " + processDataDirectory);
+
+            Path sourcePath = Path.of(processDataDirectory, TEMP_FILE_NAME);
+            log.debug("sourcePath = " + sourcePath);
+
+            Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
+            Path targetPath = targetFolderPath.resolve(METS_FILE_NAME);
+            log.debug("targetPath = " + targetPath);
+            
+            if (useScp) {
+                return exportFileUsingScp(process.getId(), TEMP_FILE_NAME, sourcePath.toString(), targetPath.toString());
+            }
+            
+            // otherwise, export locally
+            storageProvider.copyFile(sourcePath, targetPath);
+            return true;
+            
+        } catch (IOException | SwapException e) {
+            String message = "Exceptions happened while trying to export the Mets file via scp.";
+            logBoth(process.getId(), LogType.ERROR, message);
+            return false;
+        }
     }
 
     private boolean generateMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
@@ -409,7 +436,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             return true;
 
         } catch (ReadException | IOException | SwapException | PreferencesException | WriteException e) {
-            String message = "Errors happened trying to export the Mets file.";
+            String message = "Errors happened trying to generate the Mets file.";
             logBoth(process.getId(), LogType.ERROR, message);
             return false;
         }
@@ -506,51 +533,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
-    private boolean exportMetsFileUsingScp(Process process, Path targetFolderPath) {
-        // folders should already be created while trying to copy the image files, hence no need to create them again
-        try {
-            String fileName = "temp.xml";
-
-            String processDataDirectory = process.getProcessDataDirectory();
-            log.debug("processDataDirectory = " + processDataDirectory);
-
-            Path sourcePath = Path.of(processDataDirectory, TEMP_FILE_NAME);
-            log.debug("sourcePath = " + sourcePath);
-
-            Path targetPath = targetFolderPath.resolve(METS_FILE_NAME);
-            log.debug("targetPath = " + targetPath);
-
-            return exportFileUsingScp(process.getId(), fileName, sourcePath.toString(), targetPath.toString());
-
-        } catch (IOException | SwapException e) {
-            String message = "Exceptions happened while trying to export the Mets file via scp.";
-            logBoth(process.getId(), LogType.ERROR, message);
-            return false;
-        }
-    }
-
-    private boolean exportMetsFileLocally(Process process, Path targetFolderPath) {
-        // folders should already be created while trying to copy the image files, hence no need to create them again
-        try {
-            String processDataDirectory = process.getProcessDataDirectory();
-            log.debug("processDataDirectory = " + processDataDirectory);
-
-            Path sourcePath = Path.of(processDataDirectory, TEMP_FILE_NAME);
-            log.debug("sourcePath = " + sourcePath);
-
-            Path targetPath = targetFolderPath.resolve(METS_FILE_NAME);
-            log.debug("targetPath = " + targetPath);
-
-            storageProvider.copyFile(sourcePath, targetPath);
-            return true;
-
-        } catch (IOException | SwapException e) {
-            String message = "Exceptions happened while trying to export the Mets file locally.";
-            logBoth(process.getId(), LogType.ERROR, message);
-            return false;
-        }
-    }
-
     // =============== // GENERATE AND EXPORT METS FILE // =============== //
 
     private boolean exportFileUsingScp(int processId, String fileName, String sourcePath, String targetPath) {
@@ -559,7 +541,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             return false;
         }
 
-        targetPath.replace("'", "'\"'\"'");
+        targetPath = targetPath.replace("'", "'\"'\"'");
         targetPath = "'" + targetPath + "'";
 
         String command = "scp " + " -t " + targetPath;
@@ -572,23 +554,24 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             channelExec.connect();
             log.debug("channel connected, starting to export");
 
+            String ackFailureMessage = "Ack check failed while trying to export file using scp. Aborting.";
             if (checkAck(in) != 0) {
-                log.debug("1. checkAck in is NOT 0");
+                logBoth(processId, LogType.ERROR, ackFailureMessage);
                 return false;
             }
 
+            // send "C0644 fileSize fileName", where fileName should not include '/'
             File file = new File(sourcePath);
-            log.debug("File = " + file.toString());
             long fileSize = file.length();
-            log.debug("fileSize = " + fileSize);
             command = "C0644 " + fileSize + " " + fileName + "\n";
             out.write(command.getBytes());
             out.flush();
             if (checkAck(in) != 0) {
-                log.debug("2. checkAck in is NOT 0");
+                logBoth(processId, LogType.ERROR, ackFailureMessage);
                 return false;
             }
 
+            // send content of file
             FileInputStream fis = new FileInputStream(file);
             byte[] buf = new byte[1024];
             while (true) {
@@ -601,12 +584,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             }
             fis.close();
             fis = null;
+
             // send '\0'
             buf[0] = 0;
             out.write(buf, 0, 1);
             out.flush();
             if (checkAck(in) != 0) {
-                log.debug("3. checkAck in is NOT 0");
+                logBoth(processId, LogType.ERROR, ackFailureMessage);
                 return false;
             }
 
@@ -694,6 +678,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private static int checkAck(InputStream in) throws IOException {
         int b = in.read();
+        // To every command sent by the client, the server responds with a single-byte "ack", where:
         // b may be 0 for success,
         //          1 for error,
         //          2 for fatal error,
@@ -704,7 +689,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             return b;
 
         if (b == 1 || b == 2) {
-            StringBuffer sb = new StringBuffer();
+            StringBuilder sb = new StringBuilder();
             int c;
             do {
                 c = in.read();
