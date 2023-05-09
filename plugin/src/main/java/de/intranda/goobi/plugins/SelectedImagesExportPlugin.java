@@ -1,6 +1,10 @@
 package de.intranda.goobi.plugins;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -82,7 +86,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private String scpPassword;
     private String scpHostname;
 
-    private ChannelExec channel = null;
+    //    private ChannelExec channel = null;
 
     private static StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
@@ -300,8 +304,41 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     }
 
     private boolean exportImageUsingScp(int processId, Image image, Path targetFolderPath) {
+        log.debug("exporting image using scp");
 
-        return true;
+        String imageName = image.getImageName();
+        String imageSourcePath = image.getImagePath().toString();
+        String imageTargetPath = targetFolderPath.resolve(imageName).toString();
+
+        return exportFileUsingScp(processId, imageName, imageSourcePath, imageTargetPath);
+    }
+
+    static int checkAck(InputStream in) throws IOException {
+        int b = in.read();
+        // b may be 0 for success,
+        //          1 for error,
+        //          2 for fatal error,
+        //          -1
+        if (b == 0)
+            return b;
+        if (b == -1)
+            return b;
+
+        if (b == 1 || b == 2) {
+            StringBuffer sb = new StringBuffer();
+            int c;
+            do {
+                c = in.read();
+                sb.append((char) c);
+            } while (c != '\n');
+            if (b == 1) { // error
+                System.out.print(sb.toString());
+            }
+            if (b == 2) { // fatal error
+                System.out.print(sb.toString());
+            }
+        }
+        return b;
     }
 
     private boolean checkFieldsForScp(int processId) {
@@ -540,17 +577,97 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== // GENERATE AND EXPORT METS FILE // =============== //
 
     private ChannelExec getChannelExec(int processId) {
-        if (channel == null) {
-            try {
-                channel = setupJSch();
-            } catch (JSchException e) {
-                String message = "Failed to set up Jsch.";
-                logBoth(processId, LogType.ERROR, message);
-                e.printStackTrace();
+        try {
+            JSch jsch = new JSch();
+            jsch.setKnownHosts(knownHosts);
+            Session jschSession = jsch.getSession(scpLogin, scpHostname);
+            jschSession.setPassword(scpPassword);
+            jschSession.connect();
+
+            return (ChannelExec) jschSession.openChannel("exec");
+
+        } catch (JSchException e) {
+            String message = "Failed to set up Jsch.";
+            logBoth(processId, LogType.ERROR, message);
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private boolean exportFileUsingScp(int processId, String fileName, String sourcePath, String targetPath) {
+        ChannelExec channelExec = getChannelExec(processId);
+
+        //        String imageSourcePath = image.getImagePath().toString();
+        //        String imageTargetPath = targetFolderPath.resolve(imageName).toString();
+        targetPath.replace("'", "'\"'\"'");
+        targetPath = "'" + targetPath + "'";
+        //        String imageTargetPath = targetFolderPath.toString() + "/";
+        //        String hostHeading = scpLogin + "@" + scpHostname + ":";
+        //        String hostTargetPath = hostHeading + imageTargetPath;
+
+        //        String command = "scp " + imageSourcePath + " " + hostTargetPath;
+        String command = "scp " + " -t " + targetPath;
+
+        log.debug("command = " + command);
+
+        channelExec.setCommand(command);
+        try (OutputStream out = channelExec.getOutputStream();
+                InputStream in = channelExec.getInputStream()) {
+
+            channelExec.connect();
+
+            log.debug("channel connected, starting to export");
+
+            if (checkAck(in) != 0) {
+                log.debug("1. checkAck in is NOT 0");
+                return false;
             }
+
+            File file = new File(sourcePath);
+            log.debug("File = " + file.toString());
+            long fileSize = file.length();
+            log.debug("fileSize = " + fileSize);
+            command = "C0644 " + fileSize + " " + fileName + "\n";
+            out.write(command.getBytes());
+            out.flush();
+            if (checkAck(in) != 0) {
+                log.debug("2. checkAck in is NOT 0");
+                return false;
+            }
+
+            FileInputStream fis = new FileInputStream(file);
+            byte[] buf = new byte[1024];
+            while (true) {
+                int len = fis.read(buf, 0, buf.length);
+                if (len <= 0) {
+                    break;
+                }
+                out.write(buf, 0, len);
+                //                out.flush();
+            }
+            fis.close();
+            fis = null;
+            // send '\0'
+            buf[0] = 0;
+            out.write(buf, 0, 1);
+            out.flush();
+            if (checkAck(in) != 0) {
+                log.debug("3. checkAck in is NOT 0");
+                return false;
+            }
+
+            //            out.close();
+        } catch (JSchException | IOException e) {
+            String message = "Failed to export image '" + fileName + "'";
+            logBoth(processId, LogType.ERROR, message);
+            return false;
+
+        } finally {
+
+            channelExec.disconnect();
         }
 
-        return channel;
+        return true;
     }
 
     /**
