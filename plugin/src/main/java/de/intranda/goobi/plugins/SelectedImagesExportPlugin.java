@@ -86,8 +86,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private String scpPassword;
     private String scpHostname;
 
-    //    private ChannelExec channel = null;
-
     private static StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
     private static final String TEMP_FILE_NAME = "temp.xml";
@@ -279,14 +277,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private boolean createFoldersUsingScp(int processId, Path folderPath) {
         ChannelExec channelExec = getChannelExec(processId);
-
         if (channelExec == null) {
             return false;
         }
 
         String command = "mkdir -p " + folderPath;
         channelExec.setCommand(command);
-        //        channelExec.setInputStream(null);
 
         try {
             channelExec.connect();
@@ -364,11 +360,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private boolean exportImageLocally(int processId, Image image, Path targetFolderPath) {
         String imageName = image.getImageName();
-        //        String imageSource = image.getUrl();
         Path imageSourcePath = image.getImagePath();
         Path imageTargetPath = targetFolderPath.resolve(imageName);
         log.debug("imageName = " + imageName);
-        //        log.debug("imageSource = " + imageSource);
         log.debug("imageSourcePath = " + imageSourcePath);
         log.debug("imageTargetPath = " + imageTargetPath);
 
@@ -431,8 +425,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             String id = child.getIdentifier(); // PHYS_0023
             String imageName = child.getImageName(); // 00000023.jpg
 
-            //                log.debug("--------------------");
-
             List<Reference> fromReferences = new ArrayList<>(child.getAllFromReferences());
             //                log.debug("fromReferences has size = " + fromReferences.size()); // 2
             for (Reference reference : fromReferences) {
@@ -476,14 +468,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         log.debug("logicalMetadataList {}", logicalMetadataList == null ? "is null" : " has " + logicalMetadataList.size() + " elements"); // 23
         for (Metadata md : logicalMetadataList) {
             String mdTypeName = md.getType().getName();
-            //            log.debug("logical has Metadata of type: " + mdTypeName);
         }
 
         List<MetadataType> mdTypes = logical.getDefaultDisplayMetadataTypes();
         log.debug("mdTypes {}", mdTypes == null ? "is null" : " has " + mdTypes.size() + " elements"); // 2
         for (MetadataType mdt : mdTypes) {
             String mdTypeName = mdt.getName();
-            //            log.debug("logical has MetadataType: " + mdTypeName);
         }
 
         List<DocStruct> logicalChildren = logical.getAllChildren();
@@ -491,10 +481,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             String id = child.getIdentifier(); // LOG_0006
             DocStructType dsType = child.getType();
             String dsTypeName = dsType.getName(); // Figure
-
-            //            log.debug("--------------------");
-            //            log.debug("id = " + id);
-            //            log.debug("dsTypeName = " + dsTypeName);
         }
     }
 
@@ -567,46 +553,23 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     // =============== // GENERATE AND EXPORT METS FILE // =============== //
 
-    private ChannelExec getChannelExec(int processId) {
-        try {
-            JSch jsch = new JSch();
-            jsch.setKnownHosts(knownHosts);
-            Session jschSession = jsch.getSession(scpLogin, scpHostname);
-            jschSession.setPassword(scpPassword);
-            jschSession.connect();
-
-            return (ChannelExec) jschSession.openChannel("exec");
-
-        } catch (JSchException e) {
-            String message = "Failed to set up Jsch.";
-            logBoth(processId, LogType.ERROR, message);
-            e.printStackTrace();
-            return null;
-        }
-    }
-
     private boolean exportFileUsingScp(int processId, String fileName, String sourcePath, String targetPath) {
         ChannelExec channelExec = getChannelExec(processId);
+        if (channelExec == null) {
+            return false;
+        }
 
-        //        String imageSourcePath = image.getImagePath().toString();
-        //        String imageTargetPath = targetFolderPath.resolve(imageName).toString();
         targetPath.replace("'", "'\"'\"'");
         targetPath = "'" + targetPath + "'";
-        //        String imageTargetPath = targetFolderPath.toString() + "/";
-        //        String hostHeading = scpLogin + "@" + scpHostname + ":";
-        //        String hostTargetPath = hostHeading + imageTargetPath;
 
-        //        String command = "scp " + imageSourcePath + " " + hostTargetPath;
         String command = "scp " + " -t " + targetPath;
-
         log.debug("command = " + command);
-
         channelExec.setCommand(command);
+
         try (OutputStream out = channelExec.getOutputStream();
                 InputStream in = channelExec.getInputStream()) {
 
             channelExec.connect();
-
             log.debug("channel connected, starting to export");
 
             if (checkAck(in) != 0) {
@@ -647,33 +610,34 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                 return false;
             }
 
-            //            out.close();
         } catch (JSchException | IOException e) {
             String message = "Failed to export image '" + fileName + "'";
             logBoth(processId, LogType.ERROR, message);
             return false;
 
         } finally {
-
             channelExec.disconnect();
         }
 
         return true;
     }
 
-    /**
-     * 
-     * @return ChannelExec object
-     * @throws JSchException
-     */
-    private ChannelExec setupJSch() throws JSchException {
-        JSch jsch = new JSch();
-        jsch.setKnownHosts(knownHosts);
-        Session jschSession = jsch.getSession(scpLogin, scpHostname);
-        jschSession.setPassword(scpPassword);
-        jschSession.connect();
+    private ChannelExec getChannelExec(int processId) {
+        try {
+            JSch jsch = new JSch();
+            jsch.setKnownHosts(knownHosts);
+            Session jschSession = jsch.getSession(scpLogin, scpHostname);
+            jschSession.setPassword(scpPassword);
+            jschSession.connect();
 
-        return (ChannelExec) jschSession.openChannel("exec");
+            return (ChannelExec) jschSession.openChannel("exec");
+
+        } catch (JSchException e) {
+            String message = "Failed to set up Jsch.";
+            logBoth(processId, LogType.ERROR, message);
+            e.printStackTrace();
+            return null;
+        }
     }
 
     /**
