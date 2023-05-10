@@ -467,13 +467,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
         final GsonBuilder gsonBuilder = new GsonBuilder();
         gsonBuilder.registerTypeAdapter(SelectedImages.class, new SelectedImagesSerializer());
-        //        gsonBuilder.setPrettyPrinting();
+        gsonBuilder.setPrettyPrinting();
         final Gson gson = gsonBuilder.serializeNulls().create();
 
-        //        String result = gson.toJson(images);
-        //        return result.replace("\"[", "[").replace("]\"", "]").replace("\\\"", "\"");
+        String result = gson.toJson(images).replace("\\n", "\n");
 
-        return gson.toJson(images);
+        return result.replace("\"[", "[").replace("]\"", "]").replace("\\\"", "\"");
     }
     // =============== // GENERATE AND EXPORT JSON FILE // =============== //
 
