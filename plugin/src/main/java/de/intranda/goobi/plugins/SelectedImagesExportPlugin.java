@@ -76,19 +76,31 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     @Setter
     private Step step;
 
+    // whether or not to export a JSON file
     private boolean exportJsonFile;
+    // whether or not to export a METS file
     private boolean exportMetsFile;
+    // whether or not to create subfolders under target folder
     private boolean createSubfolders;
+    // name of the Processproperty that holds information of all selected images
     private String propertyName;
+    // media | master | ...
     private String sourceFolderName;
+    // target folder for the export
     private String targetFolder;
 
+    // whether or not to use scp for the export
     private boolean useScp;
+    // path to the known_hosts file, which by default should be {user.home}/.ssh/known_hosts
     private String knownHosts;
+    // user name to use scp for the export
     private String scpLogin;
+    // password to use scp for the export
     private String scpPassword;
+    // host name to use scp for the export
     private String scpHostname;
 
+    // path to the targeted folder for the export
     private Path targetFolderPath;
 
     private static StorageProviderInterface storageProvider = StorageProvider.getInstance();
@@ -165,6 +177,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return success;
     }
 
+    /**
+     * initialize private fields
+     * 
+     * @param process Goobi process
+     * @param replacer VariableReplacer
+     */
     private void initializeFields(Process process, VariableReplacer replacer) {
         SubnodeConfiguration config = getConfig(process);
         exportJsonFile = config.getBoolean("./exportJSON", false);
@@ -196,6 +214,16 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         log.debug("useScp: {}", useScp ? "yes" : "no");
     }
 
+    /**
+     * get a map between selected Image objects and their orders among all selected
+     * 
+     * @param process Goobi process
+     * @param imageNamesOrderMap map between names of selected images and their orders among all selected
+     * @return a map between selected Image objects and their orders among all selected
+     * @throws IOException
+     * @throws SwapException
+     * @throws DAOException
+     */
     private Map<Image, Integer> getSelectedImagesOrderMap(Process process, Map<String, Integer> imageNamesOrderMap)
             throws IOException, SwapException, DAOException {
         log.debug("getting selected images");
@@ -235,6 +263,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return selectedImagesOrderMap;
     }
 
+    /**
+     * get the map between names of selected images and their orders among all selected
+     * 
+     * @param process Goobi process
+     * @return the map between names of selected images and their orders among all selected
+     */
     private Map<String, Integer> getSelectedImagesNamesOrderMap(Process process) {
         Map<String, Integer> selectedImagesNamesOrderMap = new HashMap<>();
         Processproperty property = getProcessproperty(process);
@@ -257,6 +291,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return selectedImagesNamesOrderMap;
     }
 
+    /**
+     * get the proper Processproperty object holding information of all selected images
+     * 
+     * @param process Goobi process
+     * @return the Processproperty object holding information of all selected images
+     */
     private Processproperty getProcessproperty(Process process) {
         List<Processproperty> props = PropertyManager.getProcessPropertiesForProcess(process.getId());
         for (Processproperty p : props) {
@@ -270,14 +310,29 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return null;
     }
 
-    private boolean exportSelectedImages(Process process, Map<Image, Integer> selectedImagesMap) {
+    /**
+     * export all selected images
+     * 
+     * @param process Goobi process
+     * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
+     * @return true if all selected images are successfully exported, false otherwise
+     */
+    private boolean exportSelectedImages(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         int processId = process.getId();
 
-        return useScp ? exportSelectedImagesUsingScp(processId, selectedImagesMap) : exportSelectedImagesLocally(processId, selectedImagesMap);
+        return useScp ? exportSelectedImagesUsingScp(processId, selectedImagesOrderMap)
+                : exportSelectedImagesLocally(processId, selectedImagesOrderMap);
     }
 
     // ================= EXPORT USING SCP ================= // 
-    private boolean exportSelectedImagesUsingScp(int processId, Map<Image, Integer> selectedImagesMap) {
+    /**
+     * export all selected images via scp
+     * 
+     * @param processId id of the Goobi process
+     * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
+     * @return true if all selected images are successfully exported via scp, false otherwise
+     */
+    private boolean exportSelectedImagesUsingScp(int processId, Map<Image, Integer> selectedImagesOrderMap) {
         // check all necessary fields
         boolean success = checkFieldsForScp(processId);
 
@@ -285,13 +340,20 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         success = success && createFoldersUsingScp(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
-        for (Image image : selectedImagesMap.keySet()) {
+        for (Image image : selectedImagesOrderMap.keySet()) {
             success = success && exportImageUsingScp(processId, image, targetFolderPath);
         }
 
         return success;
     }
 
+    /**
+     * create folders via scp
+     * 
+     * @param processId id of the Goobi process
+     * @param folderPath path to the folder that should be created
+     * @return true if the folder is successfully created, false if any JSchException should happen
+     */
     private boolean createFoldersUsingScp(int processId, Path folderPath) {
         ChannelExec channelExec = getChannelExec(processId);
         if (channelExec == null) {
@@ -316,6 +378,14 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return true;
     }
 
+    /**
+     * export the image via scp
+     * 
+     * @param processId id of the Goobi process
+     * @param image Image object that should be exported
+     * @param targetFolderPath path to the targeted folder
+     * @return true if the image is successfully exported via scp, false otherwise
+     */
     private boolean exportImageUsingScp(int processId, Image image, Path targetFolderPath) {
         log.debug("exporting image using scp");
 
@@ -326,6 +396,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return exportFileUsingScp(processId, imageName, imageSourcePath, imageTargetPath);
     }
 
+    /**
+     * validate all necessary fields for the export via scp
+     * 
+     * @param processId id of the Goobi process
+     * @return true if all necessary fields for the export via scp are valid, false otherwise
+     */
     private boolean checkFieldsForScp(int processId) {
         String message = "";
         if (StringUtils.isBlank(knownHosts)) {
@@ -351,18 +427,32 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== // EXPORT USING SCP // =============== //
 
     // ================= EXPORT LOCALLY ================= // 
-    private boolean exportSelectedImagesLocally(int processId, Map<Image, Integer> selectedImagesMap) {
+    /**
+     * export all selected images locally
+     * 
+     * @param processId id of the Goobi process
+     * @param selectedImagesMap map between selected Image objects and their orders among all selected
+     * @return true if all selected images are successfully exported, false otherwise
+     */
+    private boolean exportSelectedImagesLocally(int processId, Map<Image, Integer> selectedImagesOrderMap) {
         // create folders if necessary
         boolean success = createFoldersLocally(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
-        for (Image image : selectedImagesMap.keySet()) {
+        for (Image image : selectedImagesOrderMap.keySet()) {
             success = success && exportImageLocally(processId, image, targetFolderPath);
         }
 
         return success;
     }
     
+    /**
+     * create folders locally
+     * 
+     * @param processId id of the Goobi process
+     * @param folderPath path to the folder that should be created
+     * @return true if the folder is successfully created, false if any IOException should happen
+     */
     private boolean createFoldersLocally(int processId, Path folderPath) {
         try {
             // no exception will be thrown if the directories are already there, hence no need to check
@@ -375,6 +465,14 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
+    /**
+     * export the image locally
+     * 
+     * @param processId id of the Goobi process
+     * @param image Image object that is to be exported
+     * @param targetFolderPath path to the targeted folder
+     * @return true if the image is successfully exported, false otherwise
+     */
     private boolean exportImageLocally(int processId, Image image, Path targetFolderPath) {
         String imageName = image.getImageName();
         Path imageSourcePath = image.getImagePath();
@@ -396,6 +494,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== // EXPORT LOCALLY // =============== //
 
     // =============== GENERATE AND EXPORT JSON FILE =============== //
+    /**
+     * generate and export a JSON file
+     * 
+     * @param process Goobi process
+     * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
+     * @return true if the expected JSON file is successfully generated and exported, false otherwise
+     */
     private boolean exportJsonFile(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         boolean jsonFileGenerated = generateJsonFile(process, selectedImagesOrderMap);
         if (!jsonFileGenerated) {
@@ -425,6 +530,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
+    /**
+     * generate a temporary JSON file in preparation for the export
+     * 
+     * @param process Goobi process
+     * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
+     * @return true if the temporary JSON file is successfully generated, false otherwise
+     */
     private boolean generateJsonFile(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         // generate JSON string
         String jsonString = generateJsonString(process, selectedImagesOrderMap);
@@ -454,6 +566,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return true;
     }
 
+    /**
+     * generate the JSON string that should be saved to a file
+     * 
+     * @param process Goobi process
+     * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
+     * @return generate the JSON string that should be saved to a file
+     */
     private String generateJsonString(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         updateJsonPropertyNamesFromConfig(process);
         SelectedImages images = new SelectedImages();
@@ -499,6 +618,11 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return result.replace("\"[", "[").replace("]\"", "]").replace("\\\"", "\"");
     }
 
+    /**
+     * update the names of properties that should be used in the JSON file
+     * 
+     * @param process Goobi process
+     */
     private void updateJsonPropertyNamesFromConfig(Process process) {
         // get configured names for JSON from the config
         SubnodeConfiguration jsonConfig = getJsonConfig(process);
@@ -544,7 +668,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== // GENERATE AND EXPORT JSON FILE // =============== //
 
     // =============== GENERATE AND EXPORT METS FILE =============== //
-
+    /**
+     * generate and export the mets file
+     * 
+     * @param process Goobi process
+     * @param selectedImagesNamesOrderMap map between names of selected images and their orders among all selected
+     * @return true if the mets file is successfully exported, false otherwise
+     */
     private boolean exportMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
         // folders should already be created while trying to copy the image files, hence no need to create them again
         boolean metsFileGenerated = generateMetsFile(process, selectedImagesNamesOrderMap);
@@ -575,6 +705,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
+    /**
+     * generate a temporary mets file in preparation for the export
+     * 
+     * @param process Goobi process
+     * @param selectedImagesNamesOrderMap map between names of selected images and their orders among all selected
+     * @return true if a temporary mets file is successfully generated, false otherwise
+     */
     private boolean generateMetsFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap) {
         log.debug("generating Mets file");
         try {
@@ -603,6 +740,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
+    /**
+     * filter out information of unselected images from the physical structure
+     * 
+     * @param prefs
+     * @param dd DigitalDocument
+     * @param selectedImagesNamesOrderMap map between names of selected images and their orders among all selected
+     */
     private void processPhysicalStructure(Prefs prefs, DigitalDocument dd, Map<String, Integer> selectedImagesNamesOrderMap) {
         DocStruct physical = dd.getPhysicalDocStruct();
 
@@ -649,6 +793,11 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
+    /**
+     * filter out information of unselected images from the logical structure
+     * 
+     * @param dd DigitalDocument
+     */
     private void processLogicalStructure(DigitalDocument dd) {
         DocStruct logical = dd.getLogicalDocStruct();
 
@@ -672,6 +821,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
+    /**
+     * filter out information of unselected images from the file set
+     * 
+     * @param dd DigitalDocument
+     * @param selectedImagesNamesOrderMap map between selected Image objects and their orders among all selected
+     */
     private void processFileSet(DigitalDocument dd, Map<String, Integer> selectedImagesNamesOrderMap) {
         FileSet fileSet = dd.getFileSet();
         List<ContentFile> contentFiles = new ArrayList<>(fileSet.getAllFiles());
@@ -695,7 +850,15 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     }
 
     // =============== // GENERATE AND EXPORT METS FILE // =============== //
-
+    /**
+     * export a file via scp
+     * 
+     * @param processId id of the Goobi process
+     * @param fileName name of the file that should be exported via scp
+     * @param sourcePath source path of the to be exported file
+     * @param targetPath target path of the to be exported file
+     * @return true if the export succeeds, false otherwise
+     */
     private boolean exportFileUsingScp(int processId, String fileName, String sourcePath, String targetPath) {
         ChannelExec channelExec = getChannelExec(processId);
         if (channelExec == null) {
@@ -767,6 +930,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return true;
     }
 
+    /**
+     * get a ChannelExec to perform an export via scp
+     * 
+     * @param processId id of the Goobi process
+     * @return ChannelExec object
+     */
     private ChannelExec getChannelExec(int processId) {
         try {
             JSch jsch = new JSch();
@@ -785,6 +954,11 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
+    /**
+     * get the XML configuration of this plugin
+     * 
+     * @return the XMLConfiguration of this plugin
+     */
     private XMLConfiguration getXMLConfig() {
         XMLConfiguration xmlConfig = ConfigPlugins.getPluginConfig(title);
         xmlConfig.setExpressionEngine(new XPathExpressionEngine());
@@ -794,16 +968,14 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     }
 
     /**
+     * get the SubnodeConfiguration of the current process
      * 
-     * @param process
+     * @param process Goobi process
      * @return SubnodeConfiguration object according to the project's name
      */
     private SubnodeConfiguration getConfig(Process process) {
         String projectName = process.getProjekt().getTitel();
         log.debug("projectName = " + projectName);
-        //        XMLConfiguration xmlConfig = ConfigPlugins.getPluginConfig(title);
-        //        xmlConfig.setExpressionEngine(new XPathExpressionEngine());
-        //        xmlConfig.setReloadingStrategy(new FileChangedReloadingStrategy());
         XMLConfiguration xmlConfig = getXMLConfig();
         SubnodeConfiguration conf = null;
 
@@ -819,6 +991,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return conf;
     }
 
+    /**
+     * get the SubnodeConfiguration of json_format block
+     * 
+     * @param process Goobi process
+     * @return SubnodeConfiguration of json_format block
+     */
     private SubnodeConfiguration getJsonConfig(Process process) {
         SubnodeConfiguration config = getConfig(process);
         SubnodeConfiguration jsonConfig = null;
@@ -832,8 +1010,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     }
 
     /**
+     * write log message into both terminal and Journal
      * 
-     * @param processId
+     * @param processId id of the Goobi process
      * @param logType
      * @param message message to be shown to both terminal and journal
      */
@@ -858,6 +1037,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
+    /**
+     * check the ack value returned by the server
+     * 
+     * @param in InputStream
+     * @return response from the server
+     * @throws IOException
+     */
     private static int checkAck(InputStream in) throws IOException {
         int b = in.read();
         // To every command sent by the client, the server responds with a single-byte "ack", where:
