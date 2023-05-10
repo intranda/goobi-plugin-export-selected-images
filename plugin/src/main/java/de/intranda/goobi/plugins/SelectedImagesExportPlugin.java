@@ -404,8 +404,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
         try {
             String processDataDirectory = process.getProcessDataDirectory();
-            log.debug("processDataDirectory = " + processDataDirectory);
-
             Path sourcePath = Path.of(processDataDirectory, JSON_FILE_NAME);
             log.debug("sourcePath = " + sourcePath);
 
@@ -435,19 +433,17 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         // save the generated JSON string into a file
         try {
             String processDataDirectory = process.getProcessDataDirectory();
-            log.debug("processDataDirectory = " + processDataDirectory);
-
             Path jsonFilePath = Path.of(processDataDirectory, JSON_FILE_NAME);
             log.debug("jsonFilePath = " + jsonFilePath);
 
             if (!storageProvider.isFileExists(jsonFilePath)) {
                 storageProvider.createFile(jsonFilePath);
             }
+
             try (OutputStream out = storageProvider.newOutputStream(jsonFilePath)) {
                 out.write(jsonString.getBytes());
                 out.flush();
             }
-            //            OutputStream out = storageProvider.newOutputStream(filePath);
 
         } catch (IOException | SwapException e) {
             String message = "Failed to generate a JSON file. Aborting.";
@@ -461,7 +457,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private String generateJsonString(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         updateJsonPropertyNamesFromConfig(process);
         SelectedImages images = new SelectedImages();
-        // there must be a way to retrieve or generate HERIS-ID
+        // TODO: there must be a way to retrieve or generate HERIS-ID
         images.setHerisId(34);
 
         for (Image image : selectedImagesOrderMap.keySet()) {
@@ -475,7 +471,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             String tooltip = image.getTooltip();
 
             SelectedImageProperties imageProperties = new SelectedImageProperties();
-            // what should be used as id for an image? 
+            // TODO: what should be used as id for an image? 
             imageProperties.setId("15700682");
             imageProperties.setTitle(imageName);
             imageProperties.setAltText(tooltip);
@@ -488,7 +484,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
             String fileCreationTime = storageProvider.getFileCreationTime(imagePath); // 2022-11-01T09:19:56Z
             String fileCreationDate = fileCreationTime.substring(0, fileCreationTime.indexOf("T"));
-            log.debug("fileCreationTime = " + fileCreationDate);
             imageProperties.setCreationDate(fileCreationDate);
 
             images.addImage(imageProperties);
@@ -559,8 +554,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
         try {
             String processDataDirectory = process.getProcessDataDirectory();
-            log.debug("processDataDirectory = " + processDataDirectory);
-
             Path sourcePath = Path.of(processDataDirectory, TEMP_FILE_NAME);
             log.debug("sourcePath = " + sourcePath);
 
