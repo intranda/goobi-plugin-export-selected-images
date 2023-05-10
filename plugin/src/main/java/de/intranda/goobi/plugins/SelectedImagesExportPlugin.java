@@ -89,10 +89,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private String scpPassword;
     private String scpHostname;
 
+    private Path targetFolderPath;
+
     private static StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
     private static final String TEMP_FILE_NAME = "temp.xml";
     private static final String METS_FILE_NAME = "mets.xml";
+    private static final String JSON_FILE_NAME = "selected.json";
 
     @Getter
     private List<String> problems;
@@ -121,9 +124,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
         problems = new ArrayList<>();
 
-        // read information from config file
-        initializeFields(process);
-
         // read mets file to test if it is readable
         try {
             Prefs prefs = process.getRegelsatz().getPreferences();
@@ -131,8 +131,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             ff = process.readMetadataFile();
             DigitalDocument dd = ff.getDigitalDocument();
             VariableReplacer replacer = new VariableReplacer(dd, prefs, process, null);
-            propertyName = replacer.replace(propertyName);
-            targetFolder = replacer.replace(targetFolder);
+
+            // read information from config file
+            initializeFields(process, replacer);
+
         } catch (ReadException | PreferencesException | IOException | SwapException e) {
             log.error(e);
             problems.add("Cannot read metadata file.");
@@ -163,7 +165,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return success;
     }
 
-    private void initializeFields(Process process) {
+    private void initializeFields(Process process, VariableReplacer replacer) {
         SubnodeConfiguration config = getConfig(process);
         exportJsonFile = config.getBoolean("./exportJSON", false);
         exportMetsFile = config.getBoolean("./exportMetsFile", false);
@@ -177,6 +179,13 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         scpLogin = config.getString("./scpLogin", "");
         scpPassword = config.getString("./scpPassword", "");
         scpHostname = config.getString("./scpHostname", "").trim();
+
+        // apply variable replacer on certain fields
+        propertyName = replacer.replace(propertyName);
+        targetFolder = replacer.replace(targetFolder);
+
+        // create subfolders if configured so
+        targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
 
         log.debug("exportJSON: {}", exportJsonFile ? "yes" : "no");
         log.debug("exportMetsFile: {}", exportMetsFile ? "yes" : "no");
@@ -263,15 +272,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private boolean exportSelectedImages(Process process, Map<Image, Integer> selectedImagesMap) {
         int processId = process.getId();
-        // create subfolders if configured so    
-        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
 
-        return useScp ? exportSelectedImagesUsingScp(processId, selectedImagesMap, targetFolderPath)
-                : exportSelectedImagesLocally(processId, selectedImagesMap, targetFolderPath);
+        return useScp ? exportSelectedImagesUsingScp(processId, selectedImagesMap) : exportSelectedImagesLocally(processId, selectedImagesMap);
     }
 
     // ================= EXPORT USING SCP ================= // 
-    private boolean exportSelectedImagesUsingScp(int processId, Map<Image, Integer> selectedImagesMap, Path targetFolderPath) {
+    private boolean exportSelectedImagesUsingScp(int processId, Map<Image, Integer> selectedImagesMap) {
         // check all necessary fields
         boolean success = checkFieldsForScp(processId);
 
@@ -345,7 +351,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== // EXPORT USING SCP // =============== //
 
     // ================= EXPORT LOCALLY ================= // 
-    private boolean exportSelectedImagesLocally(int processId, Map<Image, Integer> selectedImagesMap, Path targetFolderPath) {
+    private boolean exportSelectedImagesLocally(int processId, Map<Image, Integer> selectedImagesMap) {
         // create folders if necessary
         boolean success = createFoldersLocally(processId, targetFolderPath);
 
@@ -405,15 +411,11 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         log.debug(jsonString);
 
         // save the generated JSON string into a file
-        String jsonFileName = "selected.json";
-        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
-
-        //        Path filePath = targetFolderPath.resolve(jsonFileName);
         try {
             String processDataDirectory = process.getProcessDataDirectory();
             log.debug("processDataDirectory = " + processDataDirectory);
 
-            Path jsonFilePath = Path.of(processDataDirectory, jsonFileName);
+            Path jsonFilePath = Path.of(processDataDirectory, JSON_FILE_NAME);
             log.debug("jsonFilePath = " + jsonFilePath);
 
             if (!storageProvider.isFileExists(jsonFilePath)) {
@@ -492,7 +494,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             Path sourcePath = Path.of(processDataDirectory, TEMP_FILE_NAME);
             log.debug("sourcePath = " + sourcePath);
 
-            Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
             Path targetPath = targetFolderPath.resolve(METS_FILE_NAME);
             log.debug("targetPath = " + targetPath);
             
