@@ -865,10 +865,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         //          1 for error,
         //          2 for fatal error,
         //          -1
-        if (b == 0)
-            return b;
-        if (b == -1)
-            return b;
 
         if (b == 1 || b == 2) {
             StringBuilder sb = new StringBuilder();
@@ -889,6 +885,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                 log.error(message);
             }
         }
+
         return b;
     }
 }
