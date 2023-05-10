@@ -405,6 +405,30 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         log.debug(jsonString);
 
         // save the generated JSON string into a file
+        String jsonFileName = "selected.json";
+        Path targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
+
+        //        Path filePath = targetFolderPath.resolve(jsonFileName);
+        try {
+            String processDataDirectory = process.getProcessDataDirectory();
+            log.debug("processDataDirectory = " + processDataDirectory);
+
+            Path jsonFilePath = Path.of(processDataDirectory, jsonFileName);
+            log.debug("jsonFilePath = " + jsonFilePath);
+
+            if (!storageProvider.isFileExists(jsonFilePath)) {
+                storageProvider.createFile(jsonFilePath);
+            }
+            try (OutputStream out = storageProvider.newOutputStream(jsonFilePath)) {
+                out.write(jsonString.getBytes());
+                out.flush();
+            }
+            //            OutputStream out = storageProvider.newOutputStream(filePath);
+
+        } catch (IOException | SwapException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
 
         return true;
     }
@@ -445,6 +469,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         gsonBuilder.registerTypeAdapter(SelectedImages.class, new SelectedImagesSerializer());
         //        gsonBuilder.setPrettyPrinting();
         final Gson gson = gsonBuilder.serializeNulls().create();
+
+        //        String result = gson.toJson(images);
+        //        return result.replace("\"[", "[").replace("]\"", "]").replace("\\\"", "\"");
 
         return gson.toJson(images);
     }
