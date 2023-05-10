@@ -429,7 +429,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private boolean generateJsonFile(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         // generate JSON string
-        String jsonString = generateJsonString(selectedImagesOrderMap);
+        String jsonString = generateJsonString(process, selectedImagesOrderMap);
         log.debug(jsonString);
 
         // save the generated JSON string into a file
@@ -458,8 +458,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         return true;
     }
 
-    private String generateJsonString(Map<Image, Integer> selectedImagesOrderMap) {
+    private String generateJsonString(Process process, Map<Image, Integer> selectedImagesOrderMap) {
+        updateJsonPropertyNamesFromConfig(process);
         SelectedImages images = new SelectedImages();
+        // there must be a way to retrieve or generate HERIS-ID
         images.setHerisId(34);
 
         for (Image image : selectedImagesOrderMap.keySet()) {
@@ -473,6 +475,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             String tooltip = image.getTooltip();
 
             SelectedImageProperties imageProperties = new SelectedImageProperties();
+            // what should be used as id for an image? 
             imageProperties.setId("15700682");
             imageProperties.setTitle(imageName);
             imageProperties.setAltText(tooltip);
@@ -484,8 +487,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             imageProperties.setMigratedInformation(null);
 
             String fileCreationTime = storageProvider.getFileCreationTime(imagePath); // 2022-11-01T09:19:56Z
-            log.debug("fileCreationTime = " + fileCreationTime);
-            imageProperties.setCreationDate(fileCreationTime);
+            String fileCreationDate = fileCreationTime.substring(0, fileCreationTime.indexOf("T"));
+            log.debug("fileCreationTime = " + fileCreationDate);
+            imageProperties.setCreationDate(fileCreationDate);
 
             images.addImage(imageProperties);
         }
@@ -498,6 +502,49 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         String result = gson.toJson(images).replace("\\n", "\n");
 
         return result.replace("\"[", "[").replace("]\"", "]").replace("\\\"", "\"");
+    }
+
+    private void updateJsonPropertyNamesFromConfig(Process process) {
+        // get configured names for JSON from the config
+        SubnodeConfiguration jsonConfig = getJsonConfig(process);
+
+        // update field names for SelectedImagesSerializer
+        String images = jsonConfig.getString("./images");
+        SelectedImagesSerializer.setImages(images);
+
+        String herisId = jsonConfig.getString("herisId");
+        SelectedImagesSerializer.setHerisId(herisId);
+
+        // update field names for SelectedImagePropertiesSerializer
+        String idName = jsonConfig.getString("./idName", "");
+        SelectedImagePropertiesSerializer.setId(idName);
+
+        String title = jsonConfig.getString("./title", "");
+        SelectedImagePropertiesSerializer.setTitle(title);
+
+        String altText = jsonConfig.getString("./altText", "");
+        SelectedImagePropertiesSerializer.setAltText(altText);
+
+        String symbolImage = jsonConfig.getString("./symbolImage", "");
+        SelectedImagePropertiesSerializer.setSymbolImage(symbolImage);
+
+        String mediaType = jsonConfig.getString("./mediaType", "");
+        SelectedImagePropertiesSerializer.setMediaType(mediaType);
+
+        String creationDate = jsonConfig.getString("./creationDate", "");
+        SelectedImagePropertiesSerializer.setCreationDate(creationDate);
+
+        String copyRightBDA = jsonConfig.getString("./copyRightBDA", "");
+        SelectedImagePropertiesSerializer.setCopyrightBDA(copyRightBDA);
+
+        String fileInformation = jsonConfig.getString("./fileInformation", "");
+        SelectedImagePropertiesSerializer.setFileInformation(fileInformation);
+
+        String publishable = jsonConfig.getString("./publishable", "");
+        SelectedImagePropertiesSerializer.setPublishable(publishable);
+
+        String migratedInformation = jsonConfig.getString("./migratedInformation", "");
+        SelectedImagePropertiesSerializer.setMigratedInformation(migratedInformation);
     }
     // =============== // GENERATE AND EXPORT JSON FILE // =============== //
 
@@ -745,6 +792,14 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
     }
 
+    private XMLConfiguration getXMLConfig() {
+        XMLConfiguration xmlConfig = ConfigPlugins.getPluginConfig(title);
+        xmlConfig.setExpressionEngine(new XPathExpressionEngine());
+        xmlConfig.setReloadingStrategy(new FileChangedReloadingStrategy());
+
+        return xmlConfig;
+    }
+
     /**
      * 
      * @param process
@@ -753,9 +808,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private SubnodeConfiguration getConfig(Process process) {
         String projectName = process.getProjekt().getTitel();
         log.debug("projectName = " + projectName);
-        XMLConfiguration xmlConfig = ConfigPlugins.getPluginConfig(title);
-        xmlConfig.setExpressionEngine(new XPathExpressionEngine());
-        xmlConfig.setReloadingStrategy(new FileChangedReloadingStrategy());
+        //        XMLConfiguration xmlConfig = ConfigPlugins.getPluginConfig(title);
+        //        xmlConfig.setExpressionEngine(new XPathExpressionEngine());
+        //        xmlConfig.setReloadingStrategy(new FileChangedReloadingStrategy());
+        XMLConfiguration xmlConfig = getXMLConfig();
         SubnodeConfiguration conf = null;
 
         // order of configuration is:
@@ -768,6 +824,18 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         return conf;
+    }
+
+    private SubnodeConfiguration getJsonConfig(Process process) {
+        SubnodeConfiguration config = getConfig(process);
+        SubnodeConfiguration jsonConfig = null;
+        try {
+            jsonConfig = config.configurationAt("./json_format");
+        } catch (IllegalArgumentException e) {
+            jsonConfig = getXMLConfig().configurationAt("//json_format");
+        }
+
+        return jsonConfig;
     }
 
     /**

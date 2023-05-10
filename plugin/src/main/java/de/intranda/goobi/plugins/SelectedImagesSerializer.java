@@ -3,6 +3,8 @@ package de.intranda.goobi.plugins;
 import java.lang.reflect.Type;
 import java.util.List;
 
+import org.apache.commons.lang3.StringUtils;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -11,9 +13,8 @@ import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 
 public class SelectedImagesSerializer implements JsonSerializer<SelectedImages> {
-
-    private String images = "Bilder";
-    private String herisId = "HERIS-ID";
+    private static String images = "Bilder";
+    private static String herisId = "HERIS-ID";
 
     @Override
     public JsonElement serialize(SelectedImages src, Type typeOfSrc, JsonSerializationContext context) {
@@ -42,4 +43,17 @@ public class SelectedImagesSerializer implements JsonSerializer<SelectedImages> 
 
         return jsonObject;
     }
+
+    public static void setImages(String images) {
+        if (StringUtils.isNotBlank(images)) {
+            SelectedImagesSerializer.images = images;
+        }
+    }
+
+    public static void setHerisId(String herisId) {
+        if (StringUtils.isNotBlank(herisId)) {
+            SelectedImagesSerializer.herisId = herisId;
+        }
+    }
+
 }
