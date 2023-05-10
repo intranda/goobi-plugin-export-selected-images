@@ -151,7 +151,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         success = success && exportSelectedImages(process, selectedImagesOrderMap);
 
         // export the JSON-file
-        success = success && (!exportJsonFile || exportJsonFile(process, selectedImagesNamesOrderMap, selectedImagesOrderMap));
+        success = success && (!exportJsonFile || exportJsonFile(process, selectedImagesOrderMap));
 
         // export the mets-file
         success = success && (!exportMetsFile || exportMetsFile(process, selectedImagesNamesOrderMap));
@@ -396,16 +396,38 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     // =============== // EXPORT LOCALLY // =============== //
 
     // =============== GENERATE AND EXPORT JSON FILE =============== //
-    private boolean exportJsonFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap, Map<Image, Integer> selectedImagesOrderMap) {
-        boolean jsonFileGenerated = generateJsonFile(process, selectedImagesNamesOrderMap, selectedImagesOrderMap);
+    private boolean exportJsonFile(Process process, Map<Image, Integer> selectedImagesOrderMap) {
+        boolean jsonFileGenerated = generateJsonFile(process, selectedImagesOrderMap);
         if (!jsonFileGenerated) {
             return false;
         }
 
-        return true;
+        try {
+            String processDataDirectory = process.getProcessDataDirectory();
+            log.debug("processDataDirectory = " + processDataDirectory);
+
+            Path sourcePath = Path.of(processDataDirectory, JSON_FILE_NAME);
+            log.debug("sourcePath = " + sourcePath);
+
+            Path targetPath = targetFolderPath.resolve(JSON_FILE_NAME);
+            log.debug("targetPath = " + targetPath);
+
+            if (useScp) {
+                return exportFileUsingScp(process.getId(), JSON_FILE_NAME, sourcePath.toString(), targetPath.toString());
+            }
+
+            // otherwise, export locally
+            storageProvider.copyFile(sourcePath, targetPath);
+            return true;
+
+        } catch (IOException | SwapException e) {
+            String message = "Exceptions happened while trying to export the Mets file via scp.";
+            logBoth(process.getId(), LogType.ERROR, message);
+            return false;
+        }
     }
 
-    private boolean generateJsonFile(Process process, Map<String, Integer> selectedImagesNamesOrderMap, Map<Image, Integer> selectedImagesOrderMap) {
+    private boolean generateJsonFile(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         // generate JSON string
         String jsonString = generateJsonString(selectedImagesOrderMap);
         log.debug(jsonString);
@@ -428,8 +450,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             //            OutputStream out = storageProvider.newOutputStream(filePath);
 
         } catch (IOException | SwapException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            String message = "Failed to generate a JSON file. Aborting.";
+            logBoth(process.getId(), LogType.ERROR, message);
+            return false;
         }
 
         return true;
