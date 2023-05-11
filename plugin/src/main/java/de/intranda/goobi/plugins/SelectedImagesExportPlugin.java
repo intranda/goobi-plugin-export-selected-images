@@ -844,18 +844,16 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             }
 
             // send content of file
-            FileInputStream fis = new FileInputStream(file);
             byte[] buf = new byte[1024];
-            while (true) {
-                int len = fis.read(buf, 0, buf.length);
-                if (len <= 0) {
-                    break;
+            try (FileInputStream fis = new FileInputStream(file)) {
+                while (true) {
+                    int len = fis.read(buf, 0, buf.length);
+                    if (len <= 0) {
+                        break;
+                    }
+                    out.write(buf, 0, len);
                 }
-                out.write(buf, 0, len);
-                //                out.flush();
             }
-            fis.close();
-            fis = null;
 
             // send '\0'
             buf[0] = 0;
@@ -993,8 +991,8 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      * @throws IOException
      */
     private static int checkAck(InputStream in) throws IOException {
-        int b = in.read();
         // To every command sent by the client, the server responds with a single-byte "ack", where:
+        int b = in.read();
         // b may be 0 for success,
         //          1 for error,
         //          2 for fatal error,
