@@ -47,10 +47,8 @@ import lombok.Setter;
 import lombok.extern.log4j.Log4j2;
 import net.xeoh.plugins.base.annotations.PluginImplementation;
 import ugh.dl.ContentFile;
-import ugh.dl.ContentFileReference;
 import ugh.dl.DigitalDocument;
 import ugh.dl.DocStruct;
-import ugh.dl.DocStructType;
 import ugh.dl.FileSet;
 import ugh.dl.Fileformat;
 import ugh.dl.Metadata;
@@ -721,9 +719,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
             // physical structure
             processPhysicalStructure(prefs, dd, selectedImagesNamesOrderMap);
-
-            // logical structure
-            processLogicalStructure(dd);
             
             // file set
             processFileSet(dd, selectedImagesNamesOrderMap);
@@ -754,33 +749,18 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
         List<DocStruct> children = new ArrayList<>(physical.getAllChildren());
         for (DocStruct child : children) {
-            String id = child.getIdentifier(); // PHYS_0023
             String imageName = child.getImageName(); // 00000023.jpg
 
             List<Reference> fromReferences = new ArrayList<>(child.getAllFromReferences());
-            //                log.debug("fromReferences has size = " + fromReferences.size()); // 2
             for (Reference reference : fromReferences) {
-                String refType = reference.getType(); // logical_physical, logical_physical
                 DocStruct source = reference.getSource();
                 DocStruct target = reference.getTarget();
-
-                String sourceId = source.getIdentifier(); // LOG_0000, LOG_0006
-                String sourceImageName = source.getImageName(); // null, null
-
-                String targetId = target.getIdentifier(); // PHYS_0023, PHYS_0023
                 String targetImageName = target.getImageName(); // 00000023.jpg, 00000023.jpg
 
                 if (!selectedImagesNamesOrderMap.containsKey(targetImageName)) {
                     source.removeReferenceTo(target);
                     target.removeReferenceFrom(source);
                 }
-            }
-
-            List<ContentFileReference> contentFileReferences = child.getAllContentFileReferences();
-            //                log.debug("contentFileReferences has size = " + contentFileReferences.size()); // 1
-            for (ContentFileReference reference : contentFileReferences) {
-                ContentFile cf = reference.getCf();
-                String cfId = cf.getIdentifier(); // FILE_0023
             }
 
             if (selectedImagesNamesOrderMap.containsKey(imageName)) {
@@ -790,34 +770,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             } else {
                 physical.removeChild(child);
             }
-        }
-    }
-
-    /**
-     * filter out information of unselected images from the logical structure
-     * 
-     * @param dd DigitalDocument
-     */
-    private void processLogicalStructure(DigitalDocument dd) {
-        DocStruct logical = dd.getLogicalDocStruct();
-
-        List<Metadata> logicalMetadataList = logical.getAllMetadata();
-        log.debug("logicalMetadataList {}", logicalMetadataList == null ? "is null" : " has " + logicalMetadataList.size() + " elements"); // 23
-        for (Metadata md : logicalMetadataList) {
-            String mdTypeName = md.getType().getName();
-        }
-
-        List<MetadataType> mdTypes = logical.getDefaultDisplayMetadataTypes();
-        log.debug("mdTypes {}", mdTypes == null ? "is null" : " has " + mdTypes.size() + " elements"); // 2
-        for (MetadataType mdt : mdTypes) {
-            String mdTypeName = mdt.getName();
-        }
-
-        List<DocStruct> logicalChildren = logical.getAllChildren();
-        for (DocStruct child : logicalChildren) {
-            String id = child.getIdentifier(); // LOG_0006
-            DocStructType dsType = child.getType();
-            String dsTypeName = dsType.getName(); // Figure
         }
     }
 
@@ -833,13 +785,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         for (ContentFile file : contentFiles) {
             boolean shouldRemove = false;
             List<DocStruct> referenced = file.getReferencedDocStructs();
-            //                log.debug("referenced has size = " + referenced.size()); // 1
             for (DocStruct ds : referenced) {
                 String referencedImageName = ds.getImageName(); // 00000023.jpg
-                String referencedId = ds.getIdentifier(); // PHYS_0023
-
                 if (!selectedImagesNamesOrderMap.containsKey(referencedImageName)) {
-                    //                        contentFiles.remove(ds);
                     shouldRemove = true;
                 }
             }
