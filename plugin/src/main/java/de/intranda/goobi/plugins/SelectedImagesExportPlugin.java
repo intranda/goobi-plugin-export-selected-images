@@ -566,11 +566,24 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private String generateJsonString(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         updateJsonPropertyNamesFromConfig(process);
         SelectedImages images = new SelectedImages(selectedImagesOrderMap.size());
-        // TODO: there must be a way to retrieve or generate HERIS-ID
-        images.setHerisId(34);
+        // TODO: there might be another way to retrieve or generate HERIS-ID
+        SubnodeConfiguration valuesConfig = getJsonValuesConfig(process);
+        int idStart = 0;
+        int idStep = 1;
+        int herisId = 0;
+        if (valuesConfig != null) {
+            idStart = valuesConfig.getInt("./idStart");
+            idStep = valuesConfig.getInt("./idStep");
+            herisId = valuesConfig.getInt("./herisId");
+        }
+
+        images.setHerisId(herisId);
 
         for (Entry<Image, Integer> entry : selectedImagesOrderMap.entrySet()) {
             Image image = entry.getKey();
+            int index = entry.getValue();
+            // calculate id for this image
+            int id = idStart + (index - 1) * idStep;
             // 00000018.jpg
             String imageName = image.getImageName();
             // /opt/digiverso/goobi/metadata/4/images/thunspec_577843346_media/00000018.jpg
@@ -582,7 +595,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
             SelectedImageProperties imageProperties = new SelectedImageProperties();
             // TODO: what should be used as id for an image? 
-            imageProperties.setId("15700682");
+            imageProperties.setId(String.valueOf(id));
             imageProperties.setTitle(imageName);
             imageProperties.setAltText(tooltip);
             imageProperties.setSymbol(true);
@@ -596,7 +609,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             String fileCreationDate = fileCreationTime.substring(0, fileCreationTime.indexOf("T"));
             imageProperties.setCreationDate(fileCreationDate);
 
-            images.addImage(imageProperties, entry.getValue() - 1); // list index starts from 0
+            images.addImage(imageProperties, index - 1); // list index starts from 0
         }
 
         final GsonBuilder gsonBuilder = new GsonBuilder();
@@ -616,7 +629,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      */
     private void updateJsonPropertyNamesFromConfig(Process process) {
         // get configured names for JSON from the config
-        SubnodeConfiguration jsonConfig = getJsonConfig(process);
+        SubnodeConfiguration jsonConfig = getJsonFormatConfig(process);
 
         // update field names for SelectedImagesSerializer
         String images = jsonConfig.getString("./images");
@@ -933,13 +946,32 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      * @param process Goobi process
      * @return SubnodeConfiguration of json_format block
      */
-    private SubnodeConfiguration getJsonConfig(Process process) {
+    private SubnodeConfiguration getJsonFormatConfig(Process process) {
         SubnodeConfiguration config = getConfig(process);
         SubnodeConfiguration jsonConfig = null;
         try {
             jsonConfig = config.configurationAt("./json_format");
         } catch (IllegalArgumentException e) {
             jsonConfig = getXMLConfig().configurationAt("//json_format");
+        }
+
+        return jsonConfig;
+    }
+
+    /**
+     * get the SubnodeConfiguration of json_values block
+     * 
+     * @param process Goobi process
+     * @return SubnodeConfiguration of json_values block
+     */
+    private SubnodeConfiguration getJsonValuesConfig(Process process) {
+        SubnodeConfiguration config = getConfig(process);
+        SubnodeConfiguration jsonConfig = null;
+        try {
+            jsonConfig = config.configurationAt("./json_values");
+        } catch (IllegalArgumentException e) {
+            String message = "<json_values> are not configured.";
+            logBoth(process.getId(), LogType.ERROR, message);
         }
 
         return jsonConfig;
