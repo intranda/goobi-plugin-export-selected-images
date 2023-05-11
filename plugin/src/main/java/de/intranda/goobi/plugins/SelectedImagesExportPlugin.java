@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import org.apache.commons.configuration.SubnodeConfiguration;
 import org.apache.commons.configuration.XMLConfiguration;
@@ -65,6 +66,7 @@ import ugh.exceptions.WriteException;
 @PluginImplementation
 @Log4j2
 public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
+    private static final long serialVersionUID = -5868706901049976516L;
 
     @Getter
     private String title = "intranda_export_selected_images";
@@ -78,14 +80,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private boolean exportJsonFile;
     // whether or not to export a METS file
     private boolean exportMetsFile;
-    // whether or not to create subfolders under target folder
-    private boolean createSubfolders;
     // name of the Processproperty that holds information of all selected images
     private String propertyName;
     // media | master | ...
     private String sourceFolderName;
-    // target folder for the export
-    private String targetFolder;
 
     // whether or not to use scp for the export
     private boolean useScp;
@@ -99,7 +97,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private String scpHostname;
 
     // path to the targeted folder for the export
-    private Path targetFolderPath;
+    private transient Path targetFolderPath;
 
     private static StorageProviderInterface storageProvider = StorageProvider.getInstance();
 
@@ -112,10 +110,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     @Override
     public void setExportFulltext(boolean arg0) {
+        // won't be used in this plugin
     }
 
     @Override
     public void setExportImages(boolean arg0) {
+        // won't be used in this plugin
     }
 
     @Override
@@ -185,10 +185,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         SubnodeConfiguration config = getConfig(process);
         exportJsonFile = config.getBoolean("./exportJSON", false);
         exportMetsFile = config.getBoolean("./exportMetsFile", false);
-        createSubfolders = config.getBoolean("./createSubfolders", false);
+        boolean createSubfolders = config.getBoolean("./createSubfolders", false);
         propertyName = config.getString("./propertyName", "").trim();
         sourceFolderName = config.getString("./sourceFolder", "").trim();
-        targetFolder = config.getString("targetFolder", "").trim();
+        String targetFolder = config.getString("targetFolder", "").trim();
 
         useScp = config.getBoolean("./useScp", false);
         knownHosts = config.getString("knownHosts", "").trim();
@@ -229,7 +229,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         if (imageNamesOrderMap.isEmpty()) {
             String message = "No image is selected, aborting.";
             logBoth(process.getId(), LogType.INFO, message);
-            return null;
+            return null; // NOSONAR
         }
 
         // check source folder
@@ -237,7 +237,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         if (StringUtils.isBlank(imageFolder)) {
             String message = "The folder configured as '" + sourceFolderName + "' does not exist yet. Aborting.";
             logBoth(process.getId(), LogType.INFO, message);
-            return null;
+            return null; // NOSONAR
         }
 
         // get names of all selected images
@@ -475,9 +475,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         String imageName = image.getImageName();
         Path imageSourcePath = image.getImagePath();
         Path imageTargetPath = targetFolderPath.resolve(imageName);
-        log.debug("imageName = " + imageName);
-        log.debug("imageSourcePath = " + imageSourcePath);
-        log.debug("imageTargetPath = " + imageTargetPath);
 
         try {
             storageProvider.copyFile(imageSourcePath, imageTargetPath);
@@ -508,10 +505,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         try {
             String processDataDirectory = process.getProcessDataDirectory();
             Path sourcePath = Path.of(processDataDirectory, JSON_FILE_NAME);
-            log.debug("sourcePath = " + sourcePath);
-
             Path targetPath = targetFolderPath.resolve(JSON_FILE_NAME);
-            log.debug("targetPath = " + targetPath);
 
             if (useScp) {
                 return exportFileUsingScp(process.getId(), JSON_FILE_NAME, sourcePath.toString(), targetPath.toString());
@@ -538,13 +532,11 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     private boolean generateJsonFile(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         // generate JSON string
         String jsonString = generateJsonString(process, selectedImagesOrderMap);
-        log.debug(jsonString);
 
         // save the generated JSON string into a file
         try {
             String processDataDirectory = process.getProcessDataDirectory();
             Path jsonFilePath = Path.of(processDataDirectory, JSON_FILE_NAME);
-            log.debug("jsonFilePath = " + jsonFilePath);
 
             if (!storageProvider.isFileExists(jsonFilePath)) {
                 storageProvider.createFile(jsonFilePath);
@@ -577,7 +569,8 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         // TODO: there must be a way to retrieve or generate HERIS-ID
         images.setHerisId(34);
 
-        for (Image image : selectedImagesOrderMap.keySet()) {
+        for (Entry<Image, Integer> entry : selectedImagesOrderMap.entrySet()) {
+            Image image = entry.getKey();
             // 00000018.jpg
             String imageName = image.getImageName();
             // /opt/digiverso/goobi/metadata/4/images/thunspec_577843346_media/00000018.jpg
@@ -603,7 +596,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             String fileCreationDate = fileCreationTime.substring(0, fileCreationTime.indexOf("T"));
             imageProperties.setCreationDate(fileCreationDate);
 
-            images.addImage(imageProperties, selectedImagesOrderMap.get(image) - 1); // list index starting from 0
+            images.addImage(imageProperties, entry.getValue() - 1); // list index starts from 0
         }
 
         final GsonBuilder gsonBuilder = new GsonBuilder();
@@ -633,10 +626,10 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         SelectedImagesSerializer.setHerisId(herisId);
 
         // update field names for SelectedImagePropertiesSerializer
-        String idName = jsonConfig.getString("./idName", "");
-        SelectedImagePropertiesSerializer.setId(idName);
+        String id = jsonConfig.getString("./id", "");
+        SelectedImagePropertiesSerializer.setId(id);
 
-        String title = jsonConfig.getString("./title", "");
+        String title = jsonConfig.getString("./title", ""); // NOSONAR
         SelectedImagePropertiesSerializer.setTitle(title);
 
         String altText = jsonConfig.getString("./altText", "");
@@ -683,10 +676,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         try {
             String processDataDirectory = process.getProcessDataDirectory();
             Path sourcePath = Path.of(processDataDirectory, TEMP_FILE_NAME);
-            log.debug("sourcePath = " + sourcePath);
-
             Path targetPath = targetFolderPath.resolve(METS_FILE_NAME);
-            log.debug("targetPath = " + targetPath);
             
             if (useScp) {
                 return exportFileUsingScp(process.getId(), TEMP_FILE_NAME, sourcePath.toString(), targetPath.toString());
