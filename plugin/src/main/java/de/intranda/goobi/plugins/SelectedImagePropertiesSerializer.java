@@ -11,16 +11,16 @@ import com.google.gson.JsonSerializer;
 
 public class SelectedImagePropertiesSerializer implements JsonSerializer<SelectedImageProperties> {
 
-    private static String id = "Id";
-    private static String title = "Titel";
+    private static String id = "id";
+    private static String title = "title";
     private static String altText = "alt_text";
-    private static String symbolImage = "SymbolBild";
-    private static String mediaType = "media_type";
-    private static String creationDate = "Aufnahmedatum";
+    private static String symbolImage = "symbol image";
+    private static String mediaType = "media type";
+    private static String creationDate = "creation date";
     private static String copyrightBDA = "Copyright BDA";
-    private static String fileInformation = "Dateiinformation";
-    private static String publishable = "publikationsfähig";
-    private static String migratedInformation = "Migrierte Information";
+    private static String fileInformation = "file information";
+    private static String publishable = "publishable";
+    private static String migratedInformation = "migrated information";
 
     @Override
     public JsonElement serialize(SelectedImageProperties src, Type typeOfSrc, JsonSerializationContext context) {

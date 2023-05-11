@@ -13,7 +13,7 @@ import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
 
 public class SelectedImagesSerializer implements JsonSerializer<SelectedImages> {
-    private static String images = "Bilder";
+    private static String images = "images";
     private static String herisId = "HERIS-ID";
 
     @Override
