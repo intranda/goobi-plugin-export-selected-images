@@ -573,7 +573,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      */
     private String generateJsonString(Process process, Map<Image, Integer> selectedImagesOrderMap) {
         updateJsonPropertyNamesFromConfig(process);
-        SelectedImages images = new SelectedImages();
+        SelectedImages images = new SelectedImages(selectedImagesOrderMap.size());
         // TODO: there must be a way to retrieve or generate HERIS-ID
         images.setHerisId(34);
 
@@ -603,7 +603,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             String fileCreationDate = fileCreationTime.substring(0, fileCreationTime.indexOf("T"));
             imageProperties.setCreationDate(fileCreationDate);
 
-            images.addImage(imageProperties);
+            images.addImage(imageProperties, selectedImagesOrderMap.get(image) - 1); // list index starting from 0
         }
 
         final GsonBuilder gsonBuilder = new GsonBuilder();
