@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 
 import org.apache.commons.configuration.SubnodeConfiguration;
 import org.apache.commons.configuration.XMLConfiguration;
@@ -25,8 +24,6 @@ import org.goobi.production.enums.PluginType;
 import org.goobi.production.plugin.interfaces.IExportPlugin;
 import org.goobi.production.plugin.interfaces.IPlugin;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
@@ -76,8 +73,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     @Setter
     private Step step;
 
-    // whether or not to export a JSON file
-    private boolean exportJsonFile;
     // whether or not to export a METS file
     private boolean exportMetsFile;
     // name of the Processproperty that holds information of all selected images
@@ -103,7 +98,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     private static final String TEMP_FILE_NAME = "temp.xml";
     private static final String METS_FILE_NAME = "mets.xml";
-    private static final String JSON_FILE_NAME = "selected.json";
 
     @Getter
     private List<String> problems;
@@ -159,10 +153,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
         // export the selected images
         success = success && exportSelectedImages(process, selectedImagesOrderMap);
-
-        // export the JSON-file
-        success = success && (!exportJsonFile || exportJsonFile(process, selectedImagesOrderMap));
-
         // export the mets-file
         success = success && (!exportMetsFile || exportMetsFile(process, selectedImagesNamesOrderMap));
 
@@ -183,7 +173,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      */
     private void initializeFields(Process process, VariableReplacer replacer) {
         SubnodeConfiguration config = getConfig(process);
-        exportJsonFile = config.getBoolean("./exportJSON", false);
         exportMetsFile = config.getBoolean("./exportMetsFile", false);
         boolean createSubfolders = config.getBoolean("./createSubfolders", false);
         propertyName = config.getString("./propertyName", "").trim();
@@ -203,7 +192,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         // create subfolders if configured so
         targetFolderPath = Path.of(targetFolder, createSubfolders ? sourceFolderName : "");
 
-        log.debug("exportJSON: {}", exportJsonFile ? "yes" : "no");
         log.debug("exportMetsFile: {}", exportMetsFile ? "yes" : "no");
         log.debug("createSubfolders: {}", createSubfolders ? "yes" : "no");
         log.debug("propertyName = " + propertyName);
@@ -322,7 +310,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
                 : exportSelectedImagesLocally(processId, selectedImagesOrderMap);
     }
 
-    // ================= EXPORT USING SCP ================= // 
+    // ================= EXPORT USING SCP ================= //
     /**
      * export all selected images via scp
      * 
@@ -424,7 +412,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     }
     // =============== // EXPORT USING SCP // =============== //
 
-    // ================= EXPORT LOCALLY ================= // 
+    // ================= EXPORT LOCALLY ================= //
     /**
      * export all selected images locally
      * 
@@ -443,7 +431,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
         return success;
     }
-    
+
     /**
      * create folders locally
      * 
@@ -488,188 +476,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     // =============== // EXPORT LOCALLY // =============== //
 
-    // =============== GENERATE AND EXPORT JSON FILE =============== //
-    /**
-     * generate and export a JSON file
-     * 
-     * @param process Goobi process
-     * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
-     * @return true if the expected JSON file is successfully generated and exported, false otherwise
-     */
-    private boolean exportJsonFile(Process process, Map<Image, Integer> selectedImagesOrderMap) {
-        boolean jsonFileGenerated = generateJsonFile(process, selectedImagesOrderMap);
-        if (!jsonFileGenerated) {
-            return false;
-        }
-
-        try {
-            String processDataDirectory = process.getProcessDataDirectory();
-            Path sourcePath = Path.of(processDataDirectory, JSON_FILE_NAME);
-            Path targetPath = targetFolderPath.resolve(JSON_FILE_NAME);
-
-            if (useScp) {
-                return exportFileUsingScp(process.getId(), JSON_FILE_NAME, sourcePath.toString(), targetPath.toString());
-            }
-
-            // otherwise, export locally
-            storageProvider.copyFile(sourcePath, targetPath);
-            return true;
-
-        } catch (IOException | SwapException e) {
-            String message = "Exceptions happened while trying to export the Mets file via scp.";
-            logBoth(process.getId(), LogType.ERROR, message);
-            return false;
-        }
-    }
-
-    /**
-     * generate a temporary JSON file in preparation for the export
-     * 
-     * @param process Goobi process
-     * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
-     * @return true if the temporary JSON file is successfully generated, false otherwise
-     */
-    private boolean generateJsonFile(Process process, Map<Image, Integer> selectedImagesOrderMap) {
-        // generate JSON string
-        String jsonString = generateJsonString(process, selectedImagesOrderMap);
-
-        // save the generated JSON string into a file
-        try {
-            String processDataDirectory = process.getProcessDataDirectory();
-            Path jsonFilePath = Path.of(processDataDirectory, JSON_FILE_NAME);
-
-            if (!storageProvider.isFileExists(jsonFilePath)) {
-                storageProvider.createFile(jsonFilePath);
-            }
-
-            try (OutputStream out = storageProvider.newOutputStream(jsonFilePath)) {
-                out.write(jsonString.getBytes());
-                out.flush();
-            }
-
-        } catch (IOException | SwapException e) {
-            String message = "Failed to generate a JSON file. Aborting.";
-            logBoth(process.getId(), LogType.ERROR, message);
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * generate the JSON string that should be saved to a file
-     * 
-     * @param process Goobi process
-     * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
-     * @return generate the JSON string that should be saved to a file
-     */
-    private String generateJsonString(Process process, Map<Image, Integer> selectedImagesOrderMap) {
-        updateJsonPropertyNamesFromConfig(process);
-        SelectedImages images = new SelectedImages(selectedImagesOrderMap.size());
-        // TODO: there might be another way to retrieve or generate HERIS-ID
-        SubnodeConfiguration valuesConfig = getJsonValuesConfig(process);
-        int idStart = 0;
-        int idStep = 1;
-        int herisId = 0;
-        if (valuesConfig != null) {
-            idStart = valuesConfig.getInt("./idStart");
-            idStep = valuesConfig.getInt("./idStep");
-            herisId = valuesConfig.getInt("./herisId");
-        }
-
-        images.setHerisId(herisId);
-
-        for (Entry<Image, Integer> entry : selectedImagesOrderMap.entrySet()) {
-            Image image = entry.getKey();
-            int index = entry.getValue();
-            // calculate id for this image
-            int id = idStart + (index - 1) * idStep;
-            // 00000018.jpg
-            String imageName = image.getImageName();
-            // /opt/digiverso/goobi/metadata/4/images/thunspec_577843346_media/00000018.jpg
-            Path imagePath = image.getImagePath();
-            // jpeg
-            String largeImageFormat = image.getLargeImageFormat();
-            // 00000018.jpg
-            String tooltip = image.getTooltip();
-
-            SelectedImageProperties imageProperties = new SelectedImageProperties();
-            // TODO: what should be used as id for an image? 
-            imageProperties.setId(String.valueOf(id));
-            imageProperties.setTitle(imageName);
-            imageProperties.setAltText(tooltip);
-            imageProperties.setSymbol(true);
-            imageProperties.setMediaType(largeImageFormat);
-            imageProperties.setCopyrightBDA(true);
-            imageProperties.setFileInformation(tooltip);
-            imageProperties.setPublishable(true);
-            imageProperties.setMigratedInformation(null);
-
-            String fileCreationTime = storageProvider.getFileCreationTime(imagePath); // 2022-11-01T09:19:56Z
-            String fileCreationDate = fileCreationTime.substring(0, fileCreationTime.indexOf("T"));
-            imageProperties.setCreationDate(fileCreationDate);
-
-            images.addImage(imageProperties, index - 1); // list index starts from 0
-        }
-
-        final GsonBuilder gsonBuilder = new GsonBuilder();
-        gsonBuilder.registerTypeAdapter(SelectedImages.class, new SelectedImagesSerializer());
-        gsonBuilder.setPrettyPrinting();
-        final Gson gson = gsonBuilder.serializeNulls().create();
-
-        String result = gson.toJson(images).replace("\\n", "\n");
-
-        return result.replace("\"[", "[").replace("]\"", "]").replace("\\\"", "\"");
-    }
-
-    /**
-     * update the names of properties that should be used in the JSON file
-     * 
-     * @param process Goobi process
-     */
-    private void updateJsonPropertyNamesFromConfig(Process process) {
-        // get configured names for JSON from the config
-        SubnodeConfiguration jsonConfig = getJsonFormatConfig(process);
-
-        // update field names for SelectedImagesSerializer
-        String images = jsonConfig.getString("./images");
-        SelectedImagesSerializer.setImages(images);
-
-        String herisId = jsonConfig.getString("herisId");
-        SelectedImagesSerializer.setHerisId(herisId);
-
-        // update field names for SelectedImagePropertiesSerializer
-        String id = jsonConfig.getString("./id", "");
-        SelectedImagePropertiesSerializer.setId(id);
-
-        String title = jsonConfig.getString("./title", ""); // NOSONAR
-        SelectedImagePropertiesSerializer.setTitle(title);
-
-        String altText = jsonConfig.getString("./altText", "");
-        SelectedImagePropertiesSerializer.setAltText(altText);
-
-        String symbolImage = jsonConfig.getString("./symbolImage", "");
-        SelectedImagePropertiesSerializer.setSymbolImage(symbolImage);
-
-        String mediaType = jsonConfig.getString("./mediaType", "");
-        SelectedImagePropertiesSerializer.setMediaType(mediaType);
-
-        String creationDate = jsonConfig.getString("./creationDate", "");
-        SelectedImagePropertiesSerializer.setCreationDate(creationDate);
-
-        String copyRightBDA = jsonConfig.getString("./copyRightBDA", "");
-        SelectedImagePropertiesSerializer.setCopyrightBDA(copyRightBDA);
-
-        String fileInformation = jsonConfig.getString("./fileInformation", "");
-        SelectedImagePropertiesSerializer.setFileInformation(fileInformation);
-
-        String publishable = jsonConfig.getString("./publishable", "");
-        SelectedImagePropertiesSerializer.setPublishable(publishable);
-
-        String migratedInformation = jsonConfig.getString("./migratedInformation", "");
-        SelectedImagePropertiesSerializer.setMigratedInformation(migratedInformation);
-    }
-    // =============== // GENERATE AND EXPORT JSON FILE // =============== //
 
     // =============== GENERATE AND EXPORT METS FILE =============== //
     /**
@@ -690,15 +496,15 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
             String processDataDirectory = process.getProcessDataDirectory();
             Path sourcePath = Path.of(processDataDirectory, TEMP_FILE_NAME);
             Path targetPath = targetFolderPath.resolve(METS_FILE_NAME);
-            
+
             if (useScp) {
                 return exportFileUsingScp(process.getId(), TEMP_FILE_NAME, sourcePath.toString(), targetPath.toString());
             }
-            
+
             // otherwise, export locally
             storageProvider.copyFile(sourcePath, targetPath);
             return true;
-            
+
         } catch (IOException | SwapException e) {
             String message = "Exceptions happened while trying to export the Mets file via scp.";
             logBoth(process.getId(), LogType.ERROR, message);
@@ -722,7 +528,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
             // physical structure
             processPhysicalStructure(prefs, dd, selectedImagesNamesOrderMap);
-            
+
             // file set
             processFileSet(dd, selectedImagesNamesOrderMap);
 
