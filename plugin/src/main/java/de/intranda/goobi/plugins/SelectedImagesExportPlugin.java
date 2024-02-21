@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -38,7 +39,6 @@ import de.sub.goobi.helper.exceptions.DAOException;
 import de.sub.goobi.helper.exceptions.ExportFileException;
 import de.sub.goobi.helper.exceptions.SwapException;
 import de.sub.goobi.helper.exceptions.UghHelperException;
-import de.sub.goobi.metadaten.Image;
 import de.sub.goobi.persistence.managers.PropertyManager;
 import lombok.Getter;
 import lombok.Setter;
@@ -114,16 +114,16 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
     @Override
     public boolean startExport(Process process) throws IOException, InterruptedException, DocStructHasNoTypeException, PreferencesException,
-    WriteException, MetadataTypeNotAllowedException, ExportFileException, UghHelperException, ReadException, SwapException, DAOException,
-    TypeNotAllowedForParentException {
+            WriteException, MetadataTypeNotAllowedException, ExportFileException, UghHelperException, ReadException, SwapException, DAOException,
+            TypeNotAllowedForParentException {
         String benutzerHome = process.getProjekt().getDmsImportImagesPath();
         return startExport(process, benutzerHome);
     }
 
     @Override
     public boolean startExport(Process process, String destination) throws IOException, InterruptedException, DocStructHasNoTypeException,
-    PreferencesException, WriteException, MetadataTypeNotAllowedException, ExportFileException, UghHelperException, ReadException,
-    SwapException, DAOException, TypeNotAllowedForParentException {
+            PreferencesException, WriteException, MetadataTypeNotAllowedException, ExportFileException, UghHelperException, ReadException,
+            SwapException, DAOException, TypeNotAllowedForParentException {
         log.debug("================= STARTING TO EXPORT SELECTED IMAGES =================");
 
         problems = new ArrayList<>();
@@ -147,7 +147,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
 
         // get the maps of selected images
         Map<String, Integer> selectedImagesNamesOrderMap = getSelectedImagesNamesOrderMap(process);
-        Map<Image, Integer> selectedImagesOrderMap = getSelectedImagesOrderMap(process, selectedImagesNamesOrderMap);
+        Map<Path, Integer> selectedImagesOrderMap = getSelectedImagesOrderMap(process, selectedImagesNamesOrderMap);
 
         boolean success = selectedImagesOrderMap != null;
 
@@ -210,7 +210,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      * @throws SwapException
      * @throws DAOException
      */
-    private Map<Image, Integer> getSelectedImagesOrderMap(Process process, Map<String, Integer> imageNamesOrderMap)
+    private Map<Path, Integer> getSelectedImagesOrderMap(Process process, Map<String, Integer> imageNamesOrderMap)
             throws IOException, SwapException, DAOException {
         log.debug("getting selected images");
         // check the names-order map
@@ -229,19 +229,17 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         // get names of all selected images
-        Map<Image, Integer> selectedImagesOrderMap = new HashMap<>();
+        Map<Path, Integer> selectedImagesOrderMap = new HashMap<>();
 
         Path imageFolderPath = Path.of(imageFolder);
         log.debug("imageFolderPath = " + imageFolderPath);
         List<Path> imagePaths = storageProvider.listFiles(imageFolder);
         log.debug("imagePaths has size " + imagePaths.size());
 
-        Integer thumbnailSize = null;
-        int order = 0;
         for (Path imagePath : imagePaths) {
             String fileName = imagePath.getFileName().toString();
             if (imageNamesOrderMap.containsKey(fileName)) {
-                Image image = new Image(process, imageFolder, fileName, order++, thumbnailSize);
+                Path image = Paths.get(imageFolder, fileName);
                 selectedImagesOrderMap.put(image, imageNamesOrderMap.get(fileName));
             }
         }
@@ -303,7 +301,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
      * @return true if all selected images are successfully exported, false otherwise
      */
-    private boolean exportSelectedImages(Process process, Map<Image, Integer> selectedImagesOrderMap) {
+    private boolean exportSelectedImages(Process process, Map<Path, Integer> selectedImagesOrderMap) {
         int processId = process.getId();
 
         return useScp ? exportSelectedImagesUsingScp(processId, selectedImagesOrderMap)
@@ -318,7 +316,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      * @param selectedImagesOrderMap map between selected Image objects and their orders among all selected
      * @return true if all selected images are successfully exported via scp, false otherwise
      */
-    private boolean exportSelectedImagesUsingScp(int processId, Map<Image, Integer> selectedImagesOrderMap) {
+    private boolean exportSelectedImagesUsingScp(int processId, Map<Path, Integer> selectedImagesOrderMap) {
         // check all necessary fields
         boolean success = checkFieldsForScp(processId);
 
@@ -326,7 +324,7 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         success = success && createFoldersUsingScp(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
-        for (Image image : selectedImagesOrderMap.keySet()) {
+        for (Path image : selectedImagesOrderMap.keySet()) {
             success = success && exportImageUsingScp(processId, image, targetFolderPath);
         }
 
@@ -372,11 +370,11 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      * @param targetFolderPath path to the targeted folder
      * @return true if the image is successfully exported via scp, false otherwise
      */
-    private boolean exportImageUsingScp(int processId, Image image, Path targetFolderPath) {
+    private boolean exportImageUsingScp(int processId, Path image, Path targetFolderPath) {
         log.debug("exporting image using scp");
 
-        String imageName = image.getImageName();
-        String imageSourcePath = image.getImagePath().toString();
+        String imageName = image.getFileName().toString();
+        String imageSourcePath = image.toString();
         String imageTargetPath = targetFolderPath.resolve(imageName).toString();
 
         return exportFileUsingScp(processId, imageName, imageSourcePath, imageTargetPath);
@@ -420,12 +418,12 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      * @param selectedImagesMap map between selected Image objects and their orders among all selected
      * @return true if all selected images are successfully exported, false otherwise
      */
-    private boolean exportSelectedImagesLocally(int processId, Map<Image, Integer> selectedImagesOrderMap) {
+    private boolean exportSelectedImagesLocally(int processId, Map<Path, Integer> selectedImagesOrderMap) {
         // create folders if necessary
         boolean success = createFoldersLocally(processId, targetFolderPath);
 
         // copy all selected images to targetFolderPath
-        for (Image image : selectedImagesOrderMap.keySet()) {
+        for (Path image : selectedImagesOrderMap.keySet()) {
             success = success && exportImageLocally(processId, image, targetFolderPath);
         }
 
@@ -459,9 +457,9 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
      * @param targetFolderPath path to the targeted folder
      * @return true if the image is successfully exported, false otherwise
      */
-    private boolean exportImageLocally(int processId, Image image, Path targetFolderPath) {
-        String imageName = image.getImageName();
-        Path imageSourcePath = image.getImagePath();
+    private boolean exportImageLocally(int processId, Path image, Path targetFolderPath) {
+        String imageName = image.getFileName().toString();
+        Path imageSourcePath = image;
         Path imageTargetPath = targetFolderPath.resolve(imageName);
 
         try {
@@ -475,7 +473,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
     }
 
     // =============== // EXPORT LOCALLY // =============== //
-
 
     // =============== GENERATE AND EXPORT METS FILE =============== //
     /**
@@ -744,43 +741,6 @@ public class SelectedImagesExportPlugin implements IExportPlugin, IPlugin {
         }
 
         return conf;
-    }
-
-    /**
-     * get the SubnodeConfiguration of json_format block
-     * 
-     * @param process Goobi process
-     * @return SubnodeConfiguration of json_format block
-     */
-    private SubnodeConfiguration getJsonFormatConfig(Process process) {
-        SubnodeConfiguration config = getConfig(process);
-        SubnodeConfiguration jsonConfig = null;
-        try {
-            jsonConfig = config.configurationAt("./json_format");
-        } catch (IllegalArgumentException e) {
-            jsonConfig = getXMLConfig().configurationAt("//json_format");
-        }
-
-        return jsonConfig;
-    }
-
-    /**
-     * get the SubnodeConfiguration of json_values block
-     * 
-     * @param process Goobi process
-     * @return SubnodeConfiguration of json_values block
-     */
-    private SubnodeConfiguration getJsonValuesConfig(Process process) {
-        SubnodeConfiguration config = getConfig(process);
-        SubnodeConfiguration jsonConfig = null;
-        try {
-            jsonConfig = config.configurationAt("./json_values");
-        } catch (IllegalArgumentException e) {
-            String message = "<json_values> are not configured.";
-            logBoth(process.getId(), LogType.ERROR, message);
-        }
-
-        return jsonConfig;
     }
 
     /**
