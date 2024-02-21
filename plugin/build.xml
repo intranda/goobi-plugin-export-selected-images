@@ -8,6 +8,7 @@
 	<target name="devbuild">
 		<exec executable="mvn">
 			<arg value="package"/>
+            <arg value="-Dmaven.test.skip=true" />
 		</exec>
 		<copy file="target/plugin_intranda_export_${name}.jar" todir="/opt/digiverso/goobi/plugins/export/" overwrite="true"/>
 	</target>
