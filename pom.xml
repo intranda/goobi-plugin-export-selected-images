@@ -7,7 +7,7 @@
     <relativePath />
   </parent>
   <groupId>io.goobi.workflow.plugin</groupId>
-  <artifactId>plugin-export-selected_images</artifactId>
+  <artifactId>plugin-export-selected-images</artifactId>
   <packaging>pom</packaging>
   <modules>
     <module>module-base</module>
