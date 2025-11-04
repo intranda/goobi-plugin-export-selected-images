@@ -3,6 +3,10 @@ title: Export ausgewählter Bilder
 identifier: intranda_export_selected_images
 published: true
 description: Dies ist eine technische Dokumentation für das Plugin zum Export ausgewählter Bilder. Es ermöglicht, den Export von ausgewählten Bildern an den konfigurierten Ort im Dateisystem oder per SCP.
+keywords:
+    - Goobi workflow
+    - Plugin
+    - Export Plugin
 ---
 ## Einführung
 Die vorliegende Dokumentation beschreibt die Installation, Konfiguration und den Einsatz des Plugin zum Export ausgewählter Bilder in Goobi workflow.
